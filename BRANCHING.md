@@ -58,3 +58,6 @@ This document outlines the branching strategy for the Spentrify project.
 - ❌ `feature/user-auth` (use `frontend/` or `backend/` prefix)
 - ❌ `fix/bug-123` (use `frontend/` or `backend/` prefix)
 
+
+
+
