@@ -49,6 +49,11 @@ Join our community of developers creating universal apps.
 
 - [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
 - [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+
+## 📱 Android & iOS folders
+Guys yung project naka Expo. Native `android/` and `ios/` folders is di ko talaga sinama pero it
+and can be generated locally when needed. 
+
 =======
 # Spentrify
 Smart spending and transaction auditing application
