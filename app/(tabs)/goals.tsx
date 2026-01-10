@@ -1,56 +1,92 @@
 import { Ionicons } from "@expo/vector-icons";
-import { router, useFocusEffect } from "expo-router";
-import React, { useCallback, useMemo } from "react";
+import { router } from "expo-router";
+import React, { useMemo } from "react";
 import {
   FlatList,
-  Platform,
-  StatusBar,
   StyleSheet,
   Text,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import Svg, { Circle, G } from "react-native-svg";
 import { useData } from "../../context/DataContext";
 
-/* ================= THEME ================= */
+const COLORS = {
+  green: "#16A34A",
+  blue: "#3B82F6",
+  orange: "#F97316",
+  bg: "#f2f2f7", 
+  text: "#111827",
+  subText: "#6B7280",
+  borderColor: "#e5e7eb",
+};
 
-const PRIMARY_BLUE = "#3B82F6";
+interface CircularProgressProps {
+  percent: number;
+  color: string;
+  size?: number;
+  strokeWidth?: number;
+}
+
+const CircularProgress = ({ percent, color, size = 65, strokeWidth = 6 }: CircularProgressProps) => {
+  const radius = (size - strokeWidth) / 2;
+  const circumference = radius * 2 * Math.PI;
+  const strokeDashoffset = circumference - (percent / 100) * circumference;
+
+  return (
+    <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
+      <Svg height={size} width={size} viewBox={`0 0 ${size} ${size}`}>
+        <G rotation="-90" origin={`${size / 2}, ${size / 2}`}>
+          <Circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            stroke="#E5E7EB"
+            strokeWidth={strokeWidth}
+            fill="transparent"
+          />
+          <Circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            stroke={color}
+            strokeWidth={strokeWidth}
+            strokeDasharray={circumference}
+            strokeDashoffset={strokeDashoffset}
+            strokeLinecap="round"
+            fill="transparent"
+          />
+        </G>
+      </Svg>
+      <Text style={{ position: 'absolute', fontSize: 12, fontWeight: '700', color: '#333' }}>
+        {percent}%
+      </Text>
+    </View>
+  );
+};
 
 export default function GoalsScreen() {
   const { transactions } = useData();
 
-  /**
-   * 🎯 Goals are transactions with category === "goal"
-   * Correct math:
-   * - spent (backend)
-   * - else sum(expenses)
-   * - else 0
-   */
   const goals = useMemo(() => {
     return transactions
       .filter((t) => t.category === "goal")
       .map((t) => {
         const expenses = t.expenses ?? [];
+        const saved = typeof t.spent === "number" ? t.spent : expenses.reduce((sum, e) => sum + e.amount, 0);
+        const percentage = t.amount > 0 ? Math.min(100, Math.round((saved / t.amount) * 100)) : 0;
 
-        const saved =
-          typeof t.spent === "number"
-            ? t.spent
-            : expenses.length > 0
-            ? expenses.reduce((sum, e) => sum + e.amount, 0)
-            : 0;
+        let statusColor = COLORS.blue;
+        let statusText = "On Track";
 
-        const percentage =
-          t.amount > 0
-            ? Math.min(100, Math.round((saved / t.amount) * 100))
-            : 0;
-
-        const status =
-          percentage >= 100
-            ? "Completed"
-            : percentage >= 50
-            ? "On Track"
-            : "In Progress";
+        if (percentage >= 75) {
+            statusColor = COLORS.green; 
+            statusText = "Excellent";
+        } else if (percentage < 30) {
+            statusColor = COLORS.orange; 
+            statusText = "Behind Schedule";
+        }
 
         return {
           id: t.id,
@@ -58,128 +94,96 @@ export default function GoalsScreen() {
           target: t.amount,
           saved,
           percentage,
-          status,
+          status: statusText,
+          color: statusColor
         };
       });
   }, [transactions]);
 
-  useFocusEffect(
-    useCallback(() => {
-      // reactive via DataContext
-    }, [])
-  );
-
   const renderGoalItem = ({ item }: { item: any }) => (
     <TouchableOpacity style={styles.card} activeOpacity={0.9}>
-      <View style={styles.cardHeader}>
-        <View style={styles.cardText}>
-          <Text style={styles.goalTitle}>{item.title}</Text>
-          <Text style={styles.goalStatus}>{item.status}</Text>
+      <View style={styles.cardLeft}>
+        <Text style={styles.goalTitle}>{item.title}</Text>
+        <View style={styles.amountRow}>
+            <Text style={styles.savedAmount}>PHP {item.saved.toLocaleString()}</Text>
+            <Text style={styles.targetAmount}> / {item.target.toLocaleString()}</Text>
         </View>
-        <Text style={styles.percentText}>{item.percentage}%</Text>
-      </View>
-
-      <View style={styles.progressBarBg}>
-        <View
-          style={[
-            styles.progressBarFill,
-            { width: `${item.percentage}%` },
-          ]}
-        />
-      </View>
-
-      <View style={styles.amountRow}>
-        <Text style={styles.savedAmount}>
-          PHP {item.saved.toLocaleString()}
+        <Text style={[styles.goalStatus, { color: item.color }]}>
+            {item.status}
         </Text>
-        <Text style={styles.targetAmount}>
-          of PHP {item.target.toLocaleString()}
-        </Text>
+      </View>
+      <View style={styles.cardRight}>
+        <CircularProgress percent={item.percentage} color={item.color} />
       </View>
     </TouchableOpacity>
   );
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      {/* HEADER */}
+      
+      {/* Header */}
       <View style={styles.header}>
-        {/* LEFT SPACER (balances add button) */}
-        <View style={styles.headerSpacer} />
-
         <Text style={styles.headerTitle}>Savings Goals</Text>
-
-        {/* ➕ ADD GOAL */}
         <TouchableOpacity
           onPress={() =>
             router.push({
               pathname: "/add",
-              params: {
-                mode: "goal",
-                redirectTo: "/(tabs)/goals",
-              },
+              params: { mode: "goal", redirectTo: "/(tabs)/goals" },
             })
           }
         >
-          <Ionicons name="add-circle" size={32} color={PRIMARY_BLUE} />
+          <Ionicons name="add-circle" size={32} color={COLORS.blue} />
         </TouchableOpacity>
       </View>
 
-      <FlatList
-        data={goals}
-        keyExtractor={(item) => item.id}
-        renderItem={renderGoalItem}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={[
-          styles.listContent,
-          goals.length === 0 && styles.listEmptyContainer,
-        ]}
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Ionicons
-              name="leaf-outline"
-              size={48}
-              color={PRIMARY_BLUE}
-            />
-            <Text style={styles.emptyText}>
-              No goals yet. Start saving today!
-            </Text>
-          </View>
-        }
-      />
+      {/* FIX 2: Apply grey background ONLY to the list part */}
+      <View style={styles.bodyContainer}>
+        <FlatList
+          data={goals}
+          keyExtractor={(item) => item.id}
+          renderItem={renderGoalItem}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[
+            styles.listContent,
+            goals.length === 0 && styles.listEmptyContainer,
+          ]}
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <Ionicons name="leaf-outline" size={48} color={COLORS.blue} />
+              <Text style={styles.emptyText}>No goals yet. Start saving today!</Text>
+            </View>
+          }
+        />
+      </View>
     </SafeAreaView>
   );
 }
 
-/* ================= STYLES ================= */
-
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#fff",
-    paddingTop: Platform.OS === "android" ? StatusBar.currentHeight : 0,
+    backgroundColor: "#fff", 
   },
-
-  /* HEADER */
+  bodyContainer: {
+    flex: 1,
+    backgroundColor: COLORS.bg, 
+  },
   header: {
     flexDirection: "row",
+    justifyContent: "space-between", 
     alignItems: "center",
     paddingHorizontal: 20,
     paddingVertical: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f3f4f6",
-  },
-  headerSpacer: {
-    width: 32, // same width as add icon
+    backgroundColor: "#fff", 
+    borderBottomWidth: 1,    
+    borderBottomColor: COLORS.borderColor, 
   },
   headerTitle: {
-    flex: 1,
-    textAlign: "center",
     fontSize: 22,
     fontWeight: "800",
     color: "#111827",
+    textAlign: "left", 
   },
-
-  /* LIST */
   listContent: {
     paddingHorizontal: 20,
     paddingTop: 20,
@@ -189,77 +193,55 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: "center",
   },
-
-  /* CARD */
   card: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 20,
+    padding: 20,
     marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "#E6EAF2",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 8,
-    elevation: 3,
+    elevation: 2,
   },
-  cardHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  cardText: {
+  cardLeft: {
     flex: 1,
+    marginRight: 10,
+    alignItems: 'flex-start',
+  },
+  cardRight: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   goalTitle: {
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: "700",
     color: "#111827",
+    marginBottom: 4,
+    textAlign: 'left',
   },
-  goalStatus: {
-    fontSize: 12,
-    fontWeight: "600",
-    marginTop: 2,
-    color: PRIMARY_BLUE,
-  },
-  percentText: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: PRIMARY_BLUE,
-  },
-
-  /* PROGRESS */
-  progressBarBg: {
-    height: 8,
-    backgroundColor: "#E6EAF2",
-    borderRadius: 4,
-    marginBottom: 10,
-    overflow: "hidden",
-  },
-  progressBarFill: {
-    height: "100%",
-    borderRadius: 4,
-    backgroundColor: PRIMARY_BLUE,
-  },
-
-  /* AMOUNTS */
   amountRow: {
     flexDirection: "row",
     alignItems: "baseline",
+    marginBottom: 4,
   },
   savedAmount: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#111827",
-    marginRight: 4,
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#333",
   },
   targetAmount: {
-    fontSize: 12,
-    color: "#6B7280",
+    fontSize: 15,
+    color: "#9CA3AF",
   },
-
-  /* EMPTY STATE */
+  goalStatus: {
+    fontSize: 13,
+    fontWeight: "500",
+    marginTop: 2,
+  },
   emptyState: {
     alignItems: "center",
   },
