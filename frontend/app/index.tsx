@@ -14,6 +14,7 @@ import TransactionErrorModal from "../components/TransactionErrorModal";
 import { fonts } from "../constants/fonts";
 import { useAuth } from "../context/AuthContext";
 
+
 /* ================= SCREEN ================= */
 
 export default function LoginScreen() {

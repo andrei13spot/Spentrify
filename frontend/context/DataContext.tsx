@@ -1,11 +1,24 @@
 import React, {
   createContext,
   useContext,
+  useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
+import { useAuth } from "./AuthContext";
 
 /* ================= TYPES ================= */
+
+/**
+ * Individual expense entry
+ * Backend-ready (can come from API later)
+ */
+export type Expense = {
+  id: string;
+  amount: number;
+  createdAt: string;
+};
 
 export type Transaction = {
   id: string;
@@ -14,30 +27,34 @@ export type Transaction = {
   amount: number; // allocated budget
   date: string; // user-selected date (MM/DD/YYYY)
   createdAt: string; // system timestamp
+
+  /**
+   * 🔽 Backend / future-ready fields
+   * Optional so existing logic is NOT broken
+   */
+  expenses?: Expense[];
+  spent?: number;
+  trend?: number[];
 };
 
 export type GeneratedReport = {
   id: string;
-  itemId: string; // transaction / goal id
+  itemId: string;
   title: string;
-  description: string; // AI / backend-generated content later
+  description: string;
   createdAt: string;
 };
 
 type DataContextType = {
-  /* Core data */
   transactions: Transaction[];
 
-  /* Transactions */
   addTransaction: (transaction: Transaction) => void;
 
-  /* Reports */
   reportsByItemId: Record<string, GeneratedReport[]>;
   generateReportForItem: (itemId: string) => void;
 
-  /* Session / Reset actions */
-  clearForLogout: () => void;   // ❌ does NOT wipe data
-  clearAllData: () => void;     // ✅ full reset (dev / delete account)
+  clearForLogout: () => void;
+  clearAllData: () => void;
 };
 
 /* ================= CONTEXT ================= */
@@ -55,17 +72,38 @@ function uid(prefix = "id") {
 /* ================= PROVIDER ================= */
 
 export function DataProvider({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+
   /* ================= STATE ================= */
 
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-
-  /**
-   * Key   → transaction / goal id
-   * Value → generated reports for that item
-   */
   const [reportsByItemId, setReportsByItemId] = useState<
     Record<string, GeneratedReport[]>
   >({});
+
+  /**
+   * Tracks last authenticated user
+   * Used to detect account switching
+   */
+  const previousUserId = useRef<string | null>(null);
+
+  /* ================= IDENTITY AWARE RESET ================= */
+
+  useEffect(() => {
+    const currentUserId = user?.id ?? null;
+
+    // First login → just set reference
+    if (previousUserId.current === null) {
+      previousUserId.current = currentUserId;
+      return;
+    }
+
+    // User switched or logged out → wipe data
+    if (previousUserId.current !== currentUserId) {
+      clearAllData();
+      previousUserId.current = currentUserId;
+    }
+  }, [user]);
 
   /* ================= ACTIONS ================= */
 
@@ -73,10 +111,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setTransactions((prev) => [transaction, ...prev]);
   };
 
-  /**
-   * Placeholder report generator
-   * Backend / AI will replace this
-   */
   const generateReportForItem = (itemId: string) => {
     const now = new Date();
 
@@ -99,21 +133,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   };
 
   /**
-   * 🔐 LOGOUT SAFE
-   * Does NOT clear transactions or reports
-   * Used when user logs out
+   * LOGOUT SAFE
+   * Data reset handled by identity watcher above
    */
   const clearForLogout = () => {
     // intentionally empty
-    // session reset handled by AuthContext
   };
 
   /**
-   * 🚨 FULL DATA WIPE
-   * Used for:
-   * - Dev reset
-   * - Account deletion
-   * - Debugging
+   * FULL DATA WIPE
    */
   const clearAllData = () => {
     setTransactions([]);

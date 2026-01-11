@@ -1,14 +1,14 @@
 import React, {
-    createContext,
-    useContext,
-    useMemo,
-    useState,
+  createContext,
+  useContext,
+  useMemo,
+  useState,
 } from "react";
 
 /* ================= TYPES ================= */
 
 export type AuthUser = {
-  id: string;        // backend user id
+  id: string;        // stable user identifier
   email?: string;   // email login
   provider: "email" | "google" | "apple";
 };
@@ -30,14 +30,6 @@ type AuthContextType = {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-/* ================= HELPERS ================= */
-
-function generateUserId(prefix = "user") {
-  return `${prefix}_${Date.now()}_${Math.random()
-    .toString(16)
-    .slice(2)}`;
-}
-
 /* ================= PROVIDER ================= */
 
 export function AuthProvider({
@@ -51,6 +43,7 @@ export function AuthProvider({
 
   /**
    * EMAIL LOGIN
+   * ✅ Same email = same user ID
    * Backend will later validate credentials
    */
   const loginWithEmail = async (email: string, password: string) => {
@@ -58,32 +51,33 @@ export function AuthProvider({
       throw new Error("Missing credentials");
     }
 
-    // ✅ Temporary mock user
+    const normalizedEmail = email.trim().toLowerCase();
+
     setUser({
-      id: generateUserId("email"),
-      email,
+      id: `email:${normalizedEmail}`, // ✅ stable identity
+      email: normalizedEmail,
       provider: "email",
     });
   };
 
   /**
    * GOOGLE LOGIN
-   * Backend OAuth redirect will replace this
+   * Backend OAuth will later provide a stable user id
    */
   const loginWithGoogle = async () => {
     setUser({
-      id: generateUserId("google"),
+      id: "google:mock-user", // placeholder until backend OAuth
       provider: "google",
     });
   };
 
   /**
    * APPLE LOGIN
-   * Backend OAuth redirect will replace this
+   * Backend OAuth will later provide a stable user id
    */
   const loginWithApple = async () => {
     setUser({
-      id: generateUserId("apple"),
+      id: "apple:mock-user", // placeholder until backend OAuth
       provider: "apple",
     });
   };
@@ -91,9 +85,9 @@ export function AuthProvider({
   /* ================= LOGOUT ================= */
 
   /**
-   * IMPORTANT:
-   * ❌ Does NOT clear transactions/goals
-   * ✅ Only clears session
+   * 🔐 LOGOUT
+   * Clears session only
+   * Data reset handled by DataContext
    */
   const logout = () => {
     setUser(null);

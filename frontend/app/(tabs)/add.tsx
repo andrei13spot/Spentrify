@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import {
   FlatList,
@@ -14,7 +14,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import TransactionConfirmedModal from "../../components/TransactionConfirmedModal";
 import TransactionErrorModal from "../../components/TransactionErrorModal";
-import { useData } from "../../context/DataContext"; // ✅ GLOBAL DATA
+import { useData } from "../../context/DataContext";
 import { useNotifications } from "../../context/NotificationContext";
 
 /* ================= DATA ================= */
@@ -38,8 +38,11 @@ const CATEGORIES = [
 /* ================= SCREEN ================= */
 
 export default function AddTransaction() {
+  const { mode } = useLocalSearchParams<{ mode?: string }>();
+  const isGoal = mode === "goal";
+
   /* ================= GLOBAL DATA ================= */
-  const { addTransaction } = useData(); // ✅ SINGLE SOURCE OF TRUTH
+  const { addTransaction } = useData();
 
   /* ================= MODAL STATE ================= */
   const [showModal, setShowModal] = useState(false);
@@ -68,20 +71,19 @@ export default function AddTransaction() {
   const [tempDay, setTempDay] = useState("01");
   const [tempYear, setTempYear] = useState("2025");
 
-  /* ================= RESET FORM ================= */
+  /* ================= RESET ================= */
 
   const resetForm = () => {
     setAmount("");
     setDetails("");
     setCategory("Select Category");
     setDate("01/01/2025");
-
     setTempMonth("01");
     setTempDay("01");
     setTempYear("2025");
   };
 
-  /* ================= CONFIRM TRANSACTION ================= */
+  /* ================= CONFIRM ================= */
 
   const handleConfirmTransaction = () => {
     if (!amount || Number(amount) <= 0) {
@@ -91,27 +93,18 @@ export default function AddTransaction() {
     }
 
     if (!details.trim()) {
-      setErrorMessage("Please add a description for this transaction.");
+      setErrorMessage("Please add a description.");
       setShowError(true);
       return;
     }
 
-    if (category === "Select Category") {
+    if (!isGoal && category === "Select Category") {
       setErrorMessage("Please select a category.");
       setShowError(true);
       return;
     }
 
-    if (!date) {
-      setErrorMessage("Please choose a date.");
-      setShowError(true);
-      return;
-    }
-
-    /* ================= CREATE TRANSACTION ================= */
-
     const now = new Date();
-
     const formattedDate = now.toLocaleDateString();
     const formattedTime = now.toLocaleTimeString([], {
       hour: "2-digit",
@@ -119,23 +112,26 @@ export default function AddTransaction() {
     });
 
     const newTransaction = {
-      id: Date.now().toString(), // placeholder unique id
-      name: details, // transaction / goal name
-      category,
+      id: Date.now().toString(),
+      name: details,
+
+      // ✅ CRITICAL: isolate goals from transactions
+      category: isGoal ? "goal" : category,
+
       amount: Number(amount),
       date,
       createdAt: now.toISOString(),
+
+      // ✅ prevent phantom spend
+      spent: 0,
+      expenses: [],
     };
 
-    /* ================= SAVE TO GLOBAL STATE ================= */
-
-    addTransaction(newTransaction); // ✅ FEEDS HOME + REPORT
-
-    /* ================= NOTIFICATION ================= */
+    addTransaction(newTransaction);
 
     addNotification({
-      title: "Transaction Confirmed",
-      message: `₱${amount} • ${category}\n${details}`,
+      title: isGoal ? "Goal Added" : "Transaction Confirmed",
+      message: `₱${amount} • ${isGoal ? "Goal" : category}\n${details}`,
       date: formattedDate,
     });
 
@@ -154,7 +150,7 @@ export default function AddTransaction() {
   /* ================= UI ================= */
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={["top"]}>
+    <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
         {/* HEADER */}
         <View style={styles.header}>
@@ -162,7 +158,9 @@ export default function AddTransaction() {
             <Ionicons name="chevron-back" size={26} color="#111827" />
           </TouchableOpacity>
 
-          <Text style={styles.headerTitle}>Add Transaction</Text>
+          <Text style={styles.headerTitle}>
+            {isGoal ? "Add Goal" : "Add Transaction"}
+          </Text>
 
           <View style={{ width: 26 }} />
         </View>
@@ -183,7 +181,7 @@ export default function AddTransaction() {
         {/* DETAILS */}
         <Text style={styles.label}>Details</Text>
         <TextInput
-          placeholder="Enter description"
+          placeholder={isGoal ? "Goal name" : "Enter description"}
           value={details}
           onChangeText={setDetails}
           style={styles.input}
@@ -191,16 +189,18 @@ export default function AddTransaction() {
 
         {/* CATEGORY & DATE */}
         <View style={styles.row}>
-          <TouchableOpacity
-            style={styles.inputHalf}
-            onPress={() => setShowCategory(true)}
-          >
-            <Text style={styles.inputText}>{category}</Text>
-            <Ionicons name="chevron-down" size={18} />
-          </TouchableOpacity>
+          {!isGoal && (
+            <TouchableOpacity
+              style={styles.inputHalf}
+              onPress={() => setShowCategory(true)}
+            >
+              <Text style={styles.inputText}>{category}</Text>
+              <Ionicons name="chevron-down" size={18} />
+            </TouchableOpacity>
+          )}
 
           <TouchableOpacity
-            style={styles.inputHalf}
+            style={[styles.inputHalf, isGoal && { width: "100%" }]}
             onPress={() => setShowDatePicker(true)}
           >
             <Text style={styles.inputText}>{date}</Text>
@@ -213,7 +213,9 @@ export default function AddTransaction() {
           style={styles.confirmButton}
           onPress={handleConfirmTransaction}
         >
-          <Text style={styles.confirmText}>Confirm Transaction</Text>
+          <Text style={styles.confirmText}>
+            {isGoal ? "Confirm Goal" : "Confirm Transaction"}
+          </Text>
         </TouchableOpacity>
 
         {/* CATEGORY MODAL */}
@@ -293,8 +295,10 @@ export default function AddTransaction() {
           time={confirmedTime}
           onClose={() => {
             setShowModal(false);
-            resetForm(); // ✅ CLEAR EVERYTHING
-            router.replace("/(tabs)/home");
+            resetForm();
+
+            // ✅ FINAL FIX: redirect based on mode
+            router.replace(isGoal ? "/(tabs)/goals" : "/(tabs)/home");
           }}
         />
       </View>
@@ -305,20 +309,9 @@ export default function AddTransaction() {
 /* ================= STYLES ================= */
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: "#FFFFFF",
-  },
-  container: {
-    flex: 1,
-    backgroundColor: "#FFFFFF",
-    padding: 20,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 20,
-  },
+  safeArea: { flex: 1, backgroundColor: "#FFFFFF" },
+  container: { flex: 1, padding: 20 },
+  header: { flexDirection: "row", alignItems: "center", marginBottom: 20 },
   headerTitle: {
     flex: 1,
     textAlign: "center",
@@ -326,11 +319,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#111827",
   },
-  label: {
-    fontSize: 12,
-    color: "#6B7280",
-    marginBottom: 6,
-  },
+  label: { fontSize: 12, color: "#6B7280", marginBottom: 6 },
   amountBox: {
     flexDirection: "row",
     alignItems: "center",
@@ -340,15 +329,8 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 16,
   },
-  currency: {
-    fontSize: 14,
-    marginRight: 8,
-    color: "#6B7280",
-  },
-  amountInput: {
-    fontSize: 20,
-    flex: 1,
-  },
+  currency: { fontSize: 14, marginRight: 8, color: "#6B7280" },
+  amountInput: { fontSize: 20, flex: 1 },
   input: {
     borderWidth: 1,
     borderColor: "#E5E7EB",
@@ -356,11 +338,7 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 16,
   },
-  row: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 24,
-  },
+  row: { flexDirection: "row", justifyContent: "space-between", marginBottom: 24 },
   inputHalf: {
     width: "48%",
     borderWidth: 1,
@@ -371,20 +349,14 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
-  inputText: {
-    color: "#374151",
-  },
+  inputText: { color: "#374151" },
   confirmButton: {
     backgroundColor: "#3B82F6",
     padding: 16,
     borderRadius: 14,
     alignItems: "center",
   },
-  confirmText: {
-    color: "#FFFFFF",
-    fontWeight: "600",
-    fontSize: 16,
-  },
+  confirmText: { color: "#FFFFFF", fontWeight: "600", fontSize: 16 },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.3)",
@@ -397,12 +369,8 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 12,
   },
-  modalItem: {
-    padding: 14,
-  },
-  modalText: {
-    fontSize: 16,
-  },
+  modalItem: { padding: 14 },
+  modalText: { fontSize: 16 },
   dateBox: {
     width: "85%",
     backgroundColor: "#FFFFFF",
@@ -415,11 +383,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     textAlign: "center",
   },
-  dateRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 20,
-  },
+  dateRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 20 },
   dateInput: {
     borderWidth: 1,
     borderColor: "#E5E7EB",

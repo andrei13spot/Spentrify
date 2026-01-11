@@ -8,7 +8,9 @@ import { AuthProvider } from "../context/AuthContext";
 import { DataProvider } from "../context/DataContext";
 import { NotificationProvider } from "../context/NotificationContext";
 
+
 export default function RootLayout() {
+
   useEffect(() => {
     KeepAwake.deactivateKeepAwake();
   }, []);

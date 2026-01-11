@@ -4,11 +4,11 @@ import React, { useMemo } from "react";
 import {
   FlatList,
   Pressable,
-  SafeAreaView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Circle, Polyline } from "react-native-svg";
 import { useData } from "../../context/DataContext";
 
@@ -27,6 +27,58 @@ function peso(n: number) {
 
 function clamp01(x: number) {
   return Math.max(0, Math.min(1, x));
+}
+
+/* ================= MONTHLY SUMMARY ================= */
+
+function MonthlySummaryCard({ total }: { total: number }) {
+  const size = 180;
+  const stroke = 16;
+  const r = (size - stroke) / 2;
+  const cx = size / 2;
+  const cy = size / 2;
+
+  const segments = [
+    { color: "#3B82F6", value: 0.35 },
+    { color: "#22C55E", value: 0.3 },
+    { color: "#A855F7", value: 0.2 },
+    { color: "#F59E0B", value: 0.15 },
+  ];
+
+  let startAngle = -90;
+
+  return (
+    <View style={styles.summaryCard}>
+      <Text style={styles.summaryLabel}>TOTAL THIS MONTH</Text>
+      <Text style={styles.summaryValue}>{peso(total)}</Text>
+
+      <Svg width={size} height={size}>
+        {segments.map((seg, i) => {
+          const length = 2 * Math.PI * r * seg.value;
+          const dashArray = `${length} ${2 * Math.PI * r}`;
+          const rotation = startAngle;
+          startAngle += seg.value * 360;
+
+          return (
+            <Circle
+              key={i}
+              cx={cx}
+              cy={cy}
+              r={r}
+              stroke={seg.color}
+              strokeWidth={stroke}
+              strokeDasharray={dashArray}
+              strokeLinecap="round"
+              rotation={rotation}
+              originX={cx}
+              originY={cy}
+              fill="none"
+            />
+          );
+        })}
+      </Svg>
+    </View>
+  );
 }
 
 /* ================= CARD ================= */
@@ -86,7 +138,6 @@ function RealtimeTransactionCard({
       </View>
 
       <View style={styles.bodyRow}>
-        {/* RING */}
         <View style={styles.ringWrap}>
           <Svg width={size} height={size}>
             <Circle
@@ -120,7 +171,6 @@ function RealtimeTransactionCard({
           </View>
         </View>
 
-        {/* TREND */}
         <View style={styles.trendWrap}>
           <Text style={styles.trendTitle}>Realtime Spend</Text>
 
@@ -163,24 +213,62 @@ export default function HomeScreen() {
   const { transactions } = useData();
 
   /**
-   * ✅ SINGLE SOURCE OF TRUTH
-   * Charts are derived ONLY from transactions.
-   * When clearAllData() is called → transactions = []
-   * → charts automatically reset.
+   * BACKEND-READY DERIVATION
+   * - Supports backend-sent `spent` and `trend`
+   * - Falls back to computing from `expenses`
    */
-  const chartData = useMemo(() => {
-    return transactions.map((t) => ({
+ const chartData = useMemo(() => {
+  return transactions.map((t) => {
+    const expenses = t.expenses ?? [];
+
+    const spent =
+      typeof t.spent === "number"
+        ? t.spent
+        : expenses.length > 0
+        ? expenses.reduce((sum, e) => sum + e.amount, 0)
+        : 0;
+
+    const trend =
+      Array.isArray(t.trend) && t.trend.length > 0
+        ? t.trend
+        : expenses.reduce<number[]>((acc, e) => {
+            const prev = acc.length ? acc[acc.length - 1] : 0;
+            acc.push(prev + e.amount);
+            return acc;
+          }, []);
+
+    return {
       id: t.id,
       name: t.name,
       budget: t.amount,
-      spent: t.amount, // placeholder until backend aggregation
-      trend: [t.amount], // placeholder trend
-    }));
+      spent,
+      trend,
+    };
+  });
+}, [transactions]);
+
+
+  /**
+   * Monthly total — backend-ready
+   * Can later be replaced by API-sent aggregate
+   */
+  const monthlyTotal = useMemo(() => {
+    return transactions.reduce((sum, t) => {
+      if (typeof t.spent === "number") return sum + t.spent;
+
+      const expenses = t.expenses ?? [];
+      return (
+        sum +
+        expenses.reduce(
+          (s: number, e: { amount: number }) => s + e.amount,
+          0
+        )
+      );
+    }, 0);
   }, [transactions]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      {/* HEADER */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Your Spending</Text>
 
@@ -202,8 +290,14 @@ export default function HomeScreen() {
         <FlatList
           data={chartData}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.listContent}
+          ListHeaderComponent={
+            <>
+              <MonthlySummaryCard total={monthlyTotal} />
+              <View style={styles.divider} />
+            </>
+          }
           renderItem={({ item }) => (
             <RealtimeTransactionCard item={item} />
           )}
@@ -246,6 +340,34 @@ const styles = StyleSheet.create({
   listContent: {
     padding: 16,
     paddingBottom: 120,
+  },
+
+  summaryCard: {
+    backgroundColor: THEME.card,
+    borderRadius: 20,
+    padding: 20,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: THEME.border,
+    marginBottom: 16,
+  },
+  summaryLabel: {
+    fontSize: 12,
+    color: THEME.sub,
+    fontWeight: "600",
+    marginBottom: 6,
+  },
+  summaryValue: {
+    fontSize: 26,
+    fontWeight: "800",
+    color: THEME.text,
+    marginBottom: 12,
+  },
+
+  divider: {
+    height: 1,
+    backgroundColor: THEME.border,
+    marginBottom: 16,
   },
 
   card: {
