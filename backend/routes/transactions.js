@@ -9,6 +9,9 @@ const express = require('express');
 const router = express.Router();
 const transactionsController = require('../controllers/transactionsController');
 
+// POST /api/transactions/detect
+router.post('/detect', transactionsController.detectTransaction);
+
 // GET /api/transactions - Get all transactions
 router.get('/', transactionsController.getAllTransactions);
 

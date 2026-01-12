@@ -5,8 +5,8 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 
 // database file path from .env or default location
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', 'spentrify.db');
-
+// Gamitin ang process.cwd() para safe kahit anong Node version
+const DB_PATH = process.env.DB_PATH || path.join(process.cwd(), 'spentrify_v2.db');
 let db = null;
 
 // small helper so we can use db.query with promises
@@ -162,12 +162,12 @@ async function initDb() {
           category_id INTEGER,
           amount_encrypted TEXT NOT NULL,
           merchant_name_encrypted TEXT,
+          description_encrypted TEXT,
           transaction_date DATETIME DEFAULT CURRENT_TIMESTAMP,
           source_type TEXT,
           reference_number TEXT UNIQUE,
           is_manual INTEGER DEFAULT 0,
           is_reimbursable INTEGER DEFAULT 0,
-          receipt_image_path TEXT,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY (user_id) REFERENCES Users(user_id) ON DELETE CASCADE,
           FOREIGN KEY (category_id) REFERENCES Categories(category_id) ON DELETE SET NULL
@@ -292,26 +292,39 @@ async function initDb() {
       });
 
       // Commit transaction
-      db.run('COMMIT', (err) => {
+      db.run('COMMIT', async (err) => {
         if (err) {
           console.error('failed to commit transaction:', err);
-          db.run('ROLLBACK');
           return reject(err);
         }
-        console.log('✓ Database schema initialized successfully');
         
-        // Seed default categories
-        seedDefaultCategories()
-          .then(() => {
-            console.log('✓ Default categories seeded');
+        // FIX: Seed Default User and Categories
+        try {
+            await seedDefaultUser(); // <--- ITO ANG BAGONG IDINAGDAG
+            await seedDefaultCategories();
+            console.log('✓ Database initialized with Default User');
             resolve();
-          })
-          .catch((seedErr) => {
-            console.warn('warning: could not seed categories:', seedErr);
-            // Don't fail initialization if seeding fails
+        } catch (seedErr) {
+            console.warn('Seeding warning:', seedErr);
             resolve();
-          });
+        }
       });
+    });
+  });
+ }
+
+// FIX: Add this new function sa baba ng file (before module.exports)
+function seedDefaultUser() {
+  return new Promise((resolve, reject) => {
+    // user ID = 1
+    const sql = `INSERT OR IGNORE INTO Users (user_id, email_encrypted, passcode_hash) 
+                 VALUES (1, 'default_user_enc', 'pass123')`;
+    db.run(sql, (err) => {
+      if (err) reject(err);
+      else {
+        console.log('✓ Default User (ID: 1) created');
+        resolve();
+      }
     });
   });
 }

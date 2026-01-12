@@ -8,6 +8,8 @@ import { AuthProvider } from "../context/AuthContext";
 import { DataProvider } from "../context/DataContext";
 import { NotificationProvider } from "../context/NotificationContext";
 
+// Added this for SMS Listening
+import TransactionListener from "../components/TransactionListener";
 
 export default function RootLayout() {
 
@@ -32,7 +34,23 @@ export default function RootLayout() {
     <AuthProvider>
       <NotificationProvider>
         <DataProvider>
-          <Stack screenOptions={{ headerShown: false }} />
+
+          <TransactionListener />
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="index" />
+            <Stack.Screen name="(tabs)" />
+            
+            {/* Special handling para sa Pop-up UI */}
+            <Stack.Screen 
+              name="pop-up" 
+              options={{
+                presentation: "transparentModal", // Ito ang magic para maging overlay
+                animation: "fade",
+                headerShown: false,
+              }} 
+            />
+          </Stack>
+
         </DataProvider>
       </NotificationProvider>
     </AuthProvider>
