@@ -30,7 +30,6 @@ const CATEGORY_MAPPING: Record<number, string> = {
 };
 
 export default function PopUpScreen() {
-  // 2. Kunin ang parameters galing sa TransactionListener
   const params = useLocalSearchParams();
   
   const [selected, setSelected] = useState<string | null>(null);
@@ -81,7 +80,6 @@ export default function PopUpScreen() {
         description: (selected === 'Other' && customCategory) ? customCategory : (params.merchant || 'Manual Transaction'),
         transaction_date: params.date || new Date().toISOString(),
         category_id: categoryIdToSave || null, 
-        // Note: Kung 'Other' at may custom input, pwede niyong i-handle sa backend later
       };
 
       console.log("Saving Transaction:", payload);

@@ -13,7 +13,7 @@ const TransactionListener = () => {
     const initListener = async () => {
       if (Platform.OS === 'android') {
         try {
-          // UPDATE: Changed to RECEIVE_SMS (Ito ang kailangan para sa live listener)
+          // UPDATE: Changed to RECEIVE_SMS
           const granted = await PermissionsAndroid.request(
             PermissionsAndroid.PERMISSIONS.RECEIVE_SMS,
             {
@@ -26,11 +26,11 @@ const TransactionListener = () => {
           );
 
           if (granted === PermissionsAndroid.RESULTS.GRANTED) {
-            console.log("✅ SMS Permission Granted - Listening started...");
+            console.log("SMS Permission Granted - Listening started...");
             
             // Start Listening
             subscription = SmsListener.addListener(async (message: any) => {
-              console.log('📩 SMS Received:', message.body);
+              console.log('SMS Received:', message.body);
 
               try {
                 // Send to Backend
@@ -40,7 +40,7 @@ const TransactionListener = () => {
                 });
 
                 if (response.data.success) {
-                  console.log('🚀 Transaction Detected! Opening Pop-up...');
+                  console.log('Transaction Detected! Opening Pop-up...');
                   
                   // Navigate to Pop-up
                   router.push({
@@ -54,12 +54,12 @@ const TransactionListener = () => {
                   });
                 }
               } catch (error) {
-                console.error('❌ API Error:', error);
+                console.error('API Error:', error);
               }
             });
 
           } else {
-            console.log("❌ SMS Permission Denied");
+            console.log("SMS Permission Denied");
           }
         } catch (err) {
           console.warn(err);
@@ -69,7 +69,6 @@ const TransactionListener = () => {
 
     initListener();
 
-    // CLEANUP: Ito ang tamang paraan para patayin ang listener pag-unmount
     return () => {
       if (subscription) {
         subscription.remove();
