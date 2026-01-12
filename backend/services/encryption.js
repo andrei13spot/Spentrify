@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { Buffer } = require('buffer');
 
 // basic AES-256-GCM helper
 // this file is kept small so it is easy to study

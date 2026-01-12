@@ -1,37 +1,103 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import React, { useState } from 'react';
+import { router, useLocalSearchParams } from 'expo-router'; // 1. Added useLocalSearchParams
+import React, { useEffect, useState } from 'react';
 import {
-    KeyboardAvoidingView, Platform,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    TouchableWithoutFeedback,
-    View
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  View,
+  Alert
 } from 'react-native';
+import axios from 'axios';
+
+
+// Food=1, Bills=4/5/6 (Electricity/Water), Shopping=9, etc.
+const CATEGORY_MAPPING: Record<number, string> = {
+  1: 'Food',
+  2: 'Food', // Groceries mapped to Food icon for simplicity
+  3: 'Transport',
+  4: 'Bills', // Electricity
+  5: 'Bills', // Water
+  9: 'Shopping',
+  10: 'Health',
+  13: 'Other',
+  // Add more mappings as needed based on your DB IDs
+};
 
 export default function PopUpScreen() {
+  const params = useLocalSearchParams();
+  
   const [selected, setSelected] = useState<string | null>(null);
   const [customCategory, setCustomCategory] = useState('');
+  const [loading, setLoading] = useState(false); // Loading state for API call
+  const [finalAmount, setFinalAmount] = useState('0');
 
+  // UI Configuration for Categories
   const categories = [
-    { id: 'Food', icon: 'fast-food-outline', color: '#fee2e2', iconColor: '#ef4444' }, 
-    { id: 'Bills', icon: 'receipt-outline', color: '#dbeafe', iconColor: '#3b82f6' }, 
-    { id: 'Shopping', icon: 'bag-handle-outline', color: '#f3e8ff', iconColor: '#a855f7' }, 
-    { id: 'Health', icon: 'heart-outline', color: '#dcfce7', iconColor: '#22c55e' }, 
-    { id: 'Transport', icon: 'car-outline', color: '#ffedd5', iconColor: '#f97316' }, 
-    { id: 'Other', icon: 'ellipsis-horizontal', color: '#f3f4f6', iconColor: '#6b7280' }, 
+    { id: 'Food', dbId: 1, icon: 'fast-food-outline', color: '#fee2e2', iconColor: '#ef4444' }, 
+    { id: 'Bills', dbId: 4, icon: 'receipt-outline', color: '#dbeafe', iconColor: '#3b82f6' }, 
+    { id: 'Shopping', dbId: 9, icon: 'bag-handle-outline', color: '#f3e8ff', iconColor: '#a855f7' }, 
+    { id: 'Health', dbId: 10, icon: 'heart-outline', color: '#dcfce7', iconColor: '#22c55e' }, 
+    { id: 'Transport', dbId: 3, icon: 'car-outline', color: '#ffedd5', iconColor: '#f97316' }, 
+    { id: 'Other', dbId: 13, icon: 'ellipsis-horizontal', color: '#f3f4f6', iconColor: '#6b7280' }, 
   ];
 
-  const handleConfirm = () => {
+  // Auto-populate data pag-load ng screen
+  useEffect(() => {
+    if (params.amount) {
+      setFinalAmount(params.amount.toString());
+    }
+
+    if (params.category_id) {
+      const catId = Number(params.category_id);
+      // Hanapin ang UI key base sa ID (e.g., ID 1 -> 'Food')
+      const uiKey = CATEGORY_MAPPING[catId];
+      if (uiKey) {
+        setSelected(uiKey);
+      }
+    }
+  }, [params]);
+
+  const handleConfirm = async () => {
     if (!selected) return;
     
-    // In a real app, if selected is 'Other', you'd use 'customCategory' value
-    const finalCategory = selected === 'Other' ? customCategory : selected;
-    console.log("Saving Category:", finalCategory);
-    
-    router.back();
+    setLoading(true);
+
+    try {
+      const selectedCategoryObj = categories.find(c => c.id === selected);
+      let categoryIdToSave = selectedCategoryObj?.dbId || 13;
+
+      // Prepare payload
+      const payload = {
+        user_id: 'default_user', // Palitan ng dynamic ID kung may auth na
+        amount: parseFloat(finalAmount),
+        merchant_name: params.merchant || 'Unknown Merchant',
+        description: (selected === 'Other' && customCategory) ? customCategory : (params.merchant || 'Manual Transaction'),
+        transaction_date: params.date || new Date().toISOString(),
+        category_id: categoryIdToSave || null, 
+      };
+
+      console.log("Saving Transaction:", payload);
+
+      // 5. Send to Backend API
+      // Gamitin ang 10.0.2.2 para sa Android Emulator
+      const response = await axios.post('http://10.0.2.2:3000/api/transactions', payload);
+
+      if (response.data.success) {
+        Alert.alert("Success", "Transaction Saved!");
+        router.back();
+      }
+    } catch (error) {
+      console.error('Save failed:', error);
+      Alert.alert('Error', 'Failed to save transaction. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -53,10 +119,14 @@ export default function PopUpScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Amount */}
+        {/* Amount (Dynamic Data) */}
         <View style={styles.amountContainer}>
-          <Text style={styles.amount}>PHP 0.00</Text>
-          <Text style={styles.merchant}>Unknown Merchant • Today</Text>
+          <Text style={styles.amount}>
+            PHP {parseFloat(finalAmount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+          </Text>
+          <Text style={styles.merchant}>
+            {params.merchant || 'Unknown Merchant'} • Today
+          </Text>
         </View>
 
         {/* Grid */}
@@ -92,7 +162,7 @@ export default function PopUpScreen() {
           })}
         </View>
 
-        {/* CUSTOM INPUT (Only shows if "Other" is selected) */}
+        {/* CUSTOM INPUT (Shows if "Other" is selected) */}
         {selected === 'Other' && (
           <View style={styles.inputContainer}>
             <TextInput
@@ -101,18 +171,22 @@ export default function PopUpScreen() {
               placeholderTextColor="#666"
               value={customCategory}
               onChangeText={setCustomCategory}
-              autoFocus={true} // Opens keyboard immediately
+              autoFocus={true} 
             />
           </View>
         )}
 
         {/* Confirm Button */}
         <TouchableOpacity 
-          style={[styles.confirmButton, { opacity: selected ? 1 : 0.5 }]} 
+          style={[styles.confirmButton, { opacity: (selected && !loading) ? 1 : 0.5 }]} 
           onPress={handleConfirm}
-          disabled={!selected}
+          disabled={!selected || loading}
         >
-          <Text style={styles.confirmText}>Confirm</Text>
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.confirmText}>Confirm</Text>
+          )}
         </TouchableOpacity>
 
       </View>
@@ -126,6 +200,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
+    // Note: Overlay styling is handled by View above, container is transparent
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
@@ -137,6 +212,14 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     padding: 24,
     alignItems: 'center',
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
   header: {
     width: '100%',
@@ -163,6 +246,7 @@ const styles = StyleSheet.create({
   merchant: {
     fontSize: 14,
     color: '#6b7280',
+    fontWeight: '500',
   },
   grid: {
     flexDirection: 'row',
@@ -189,7 +273,6 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
     fontWeight: '500',
   },
-
   inputContainer: {
     width: '100%',
     marginBottom: 10,

@@ -8,158 +8,137 @@
 const db = require('../database/connection');
 
 /**
- * Get all categories
- * @returns {Promise<Array>} Array of category objects
+ * FEATURE: Categorization Logic
+ * Mapping ng keywords base sa Merchant name mula sa SMS/Notifications.
+ * Ito ang magsisilbing basehan para sa "One-Tap" selection.
+ */
+const KEYWORD_MAP = {
+  'Food': ['jollibee', 'mcdonalds', 'grabfood', 'foodpanda', 'starbucks', 'kfc', 'burger king'],
+  'Groceries': ['puregold', 'savemore', 'supermarket', '7-eleven', 'mercury drug', 'watsons'],
+  'Transportation': ['grab', 'angkas', 'joyride', 'shell', 'petron', 'caltex', 'easytrip', 'autosweep'],
+  'Electricity': ['meralco', 'kuryente'],
+  'Water': ['maynilad', 'manila water'],
+  'Internet': ['globe', 'smart', 'pldt', 'converge', 'skycable'],
+  'Subscriptions': ['netflix', 'spotify', 'youtube', 'disney'],
+  'Shopping': ['lazada', 'shopee', 'zalora', 'uniqlo', 'sm store']
+};
+
+/**
+ * Nag-usuggest ng category_id base sa merchant name.
+ * Ginagamit para sa "Instant Categorization Pop-Up" (Feature 2).
+ * @param {string} merchantName 
+ * @returns {Promise<number|null>}
+ */
+async function suggestCategory(merchantName) {
+  if (!merchantName) return null;
+  
+  const name = merchantName.toLowerCase();
+  const matchedKey = Object.keys(KEYWORD_MAP).find(key => name.includes(key));
+  
+  if (matchedKey) {
+    const categoryName = KEYWORD_MAP[matchedKey];
+    // Gagamitin ang Categories table na nasa connection.js niyo
+    const rows = await db.query(
+      'SELECT category_id FROM Categories WHERE category_name = ? LIMIT 1',
+      [categoryName]
+    );
+    return rows.length > 0 ? rows[0].category_id : null;
+  }
+  
+  return null; // Default to 'Others' sa UI kung walang match
+}
+
+/**
+ * FEATURE: SMS/Notification Parsing
+ * Hinihimay ang raw text mula sa Android Emulator (Feature 1).
+ * @param {string} rawText 
+ * @param {number} userId 
+ */
+async function parseNotification(rawText, userId) {
+  // Regex patterns para sa digital transactions (GCash/Maya)
+  const PATTERNS = {
+    GCASH: /You have sent PHP\s?(\d+\.?\d*) to (.*) on/i,
+    MAYA: /You've paid PHP\s?(\d+\.?\d*) to (.*)\./i
+  };
+
+  let amount = 0;
+  let merchant = 'Unknown Merchant';
+
+  const gcashMatch = rawText.match(PATTERNS.GCASH);
+  if (gcashMatch) {
+    amount = parseFloat(gcashMatch[1]);
+    merchant = gcashMatch[2].trim();
+  }
+
+  const categoryId = await suggestCategory(merchant);
+
+  return {
+    user_id: userId,
+    amount: amount,
+    merchant_name: merchant,
+    transaction_date: new Date().toISOString(),
+    category_id: categoryId,
+    is_manual: 0
+  };
+}
+
+/**
+ * STANDARD OPERATIONS
  */
 async function getAllCategories() {
-  const database = await db.getConnection();
-  
-  return new Promise((resolve, reject) => {
-    const query = 'SELECT * FROM categories ORDER BY name ASC';
-    
-    database.all(query, [], (err, rows) => {
-      if (err) {
-        reject(err);
-        return;
-      }
-      
-      resolve(rows);
-    });
-  });
+  // Gumagamit ng Category_name dahil ito ang nasa connection.js mo
+  return await db.query('SELECT * FROM Categories ORDER BY category_name ASC');
 }
 
-/**
- * Get a single category by ID
- * @param {number} id - Category ID
- * @returns {Promise<Object|null>} Category object or null
- */
 async function getCategoryById(id) {
-  const database = await db.getConnection();
-  
-  return new Promise((resolve, reject) => {
-    const query = 'SELECT * FROM categories WHERE id = ?';
-    
-    database.get(query, [id], (err, row) => {
-      if (err) {
-        reject(err);
-        return;
-      }
-      
-      resolve(row || null);
-    });
-  });
+  const rows = await db.query('SELECT * FROM Categories WHERE category_id = ?', [id]);
+  return rows[0] || null;
 }
 
-/**
- * Create a new category
- * @param {Object} categoryData - Category data
- * @param {string} categoryData.name - Category name
- * @param {string} categoryData.type - Category type ('income' or 'expense')
- * @returns {Promise<Object>} Created category object
- */
 async function createCategory(categoryData) {
-  const database = await db.getConnection();
+  const result = await db.run(
+    'INSERT INTO Categories (category_name, is_itr_deductible) VALUES (?, ?)',
+    [categoryData.name, categoryData.is_itr_deductible || 0]
+  );
   
-  return new Promise((resolve, reject) => {
-    const query = `
-      INSERT INTO categories (name, type)
-      VALUES (?, ?)
-    `;
-    
-    database.run(
-      query,
-      [categoryData.name, categoryData.type],
-      function(err) {
-        if (err) {
-          reject(err);
-          return;
-        }
-        
-        resolve({
-          id: this.lastID,
-          name: categoryData.name,
-          type: categoryData.type,
-          created_at: new Date().toISOString()
-        });
-      }
-    );
-  });
+  return {
+    category_id: result.lastID,
+    ...categoryData,
+    created_at: new Date().toISOString()
+  };
 }
 
-/**
- * Update a category
- * @param {number} id - Category ID
- * @param {Object} updates - Fields to update
- * @returns {Promise<Object|null>} Updated category object or null
- */
 async function updateCategory(id, updates) {
-  const database = await db.getConnection();
+  const fields = [];
+  const values = [];
   
-  return new Promise((resolve, reject) => {
-    const fields = [];
-    const values = [];
-    
-    if (updates.name !== undefined) {
-      fields.push('name = ?');
-      values.push(updates.name);
-    }
-    
-    if (updates.type !== undefined) {
-      fields.push('type = ?');
-      values.push(updates.type);
-    }
-    
-    if (fields.length === 0) {
-      return getCategoryById(id).then(resolve).catch(reject);
-    }
-    
-    values.push(id);
-    
-    const query = `
-      UPDATE categories
-      SET ${fields.join(', ')}
-      WHERE id = ?
-    `;
-    
-    database.run(query, values, function(err) {
-      if (err) {
-        reject(err);
-        return;
-      }
-      
-      if (this.changes === 0) {
-        resolve(null);
-        return;
-      }
-      
-      getCategoryById(id).then(resolve).catch(reject);
-    });
-  });
+  if (updates.name !== undefined) {
+    fields.push('category_name = ?');
+    values.push(updates.name);
+  }
+  
+  if (updates.is_itr_deductible !== undefined) {
+    fields.push('is_itr_deductible = ?');
+    values.push(updates.is_itr_deductible);
+  }
+  
+  if (fields.length === 0) return await getCategoryById(id);
+  
+  values.push(id);
+  const sql = `UPDATE Categories SET ${fields.join(', ')} WHERE category_id = ?`;
+  
+  const result = await db.run(sql, values);
+  return result.changes > 0 ? await getCategoryById(id) : null;
 }
 
-/**
- * Delete a category
- * @param {number} id - Category ID
- * @returns {Promise<boolean>} True if deleted, false if not found
- */
 async function deleteCategory(id) {
-  const database = await db.getConnection();
-  
-  return new Promise((resolve, reject) => {
-    const query = 'DELETE FROM categories WHERE id = ?';
-    
-    database.run(query, [id], function(err) {
-      if (err) {
-        reject(err);
-        return;
-      }
-      
-      resolve(this.changes > 0);
-    });
-  });
+  const result = await db.run('DELETE FROM Categories WHERE category_id = ?', [id]);
+  return result.changes > 0;
 }
 
 module.exports = {
+  parseNotification,
+  suggestCategory,
   getAllCategories,
   getCategoryById,
   createCategory,
