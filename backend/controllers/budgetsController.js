@@ -6,6 +6,7 @@
  */
 
 const budgetService = require('../services/budgetsService');
+const notificationsService = require('../services/notificationsService');
 
 /**
  * Get all budgets for a user
@@ -14,7 +15,7 @@ const budgetService = require('../services/budgetsService');
 async function getAllBudgets(req, res, next) {
   try {
     // TODO: Extract user_id from authentication token
-    const userId = req.query.user_id || 'default_user';
+    const userId = req.query.user_id || 1;
     
     const budgets = await budgetService.getAllBudgets(userId);
     
@@ -36,7 +37,7 @@ async function getBudgetById(req, res, next) {
   try {
     const { id } = req.params;
     // TODO: Extract user_id from authentication token
-    const userId = req.query.user_id || 'default_user';
+    const userId = req.query.user_id || 1;
     
     const budget = await budgetService.getBudgetById(id, userId);
     
@@ -72,31 +73,21 @@ async function getBudgetById(req, res, next) {
  */
 async function createBudget(req, res, next) {
   try {
+    // Tanggapin ang data galing sa Frontend
     const { user_id, category_id, budget_amount, period, start_date, end_date } = req.body;
-    
-    if (!user_id || budget_amount === undefined || !period || !start_date) {
+    const userId = user_id || 1; 
+
+    // 1. Validation
+    if (budget_amount === undefined || !period || !start_date) {
       return res.status(400).json({
         success: false,
-        error: { message: 'Missing required fields: user_id, budget_amount, period, start_date' }
+        error: { message: 'Missing fields: budget_amount, period, or start_date' }
       });
     }
     
-    if (typeof budget_amount !== 'number' || budget_amount <= 0) {
-      return res.status(400).json({
-        success: false,
-        error: { message: 'Budget amount must be a positive number' }
-      });
-    }
-    
-    if (!['daily', 'weekly', 'monthly', 'yearly'].includes(period)) {
-      return res.status(400).json({
-        success: false,
-        error: { message: 'Period must be one of: daily, weekly, monthly, yearly' }
-      });
-    }
-    
+    // 2. Save to Database using Service
     const budget = await budgetService.createBudget({
-      user_id,
+      user_id: userId,
       category_id,
       budget_amount,
       period,
@@ -109,6 +100,25 @@ async function createBudget(req, res, next) {
       data: budget,
       message: 'Budget created successfully'
     });
+
+    try {
+      const notifTitle = "Goal Set"; 
+      const notifMessage = `Budget: PHP ${budget_amount} (${period}) • Starts: ${start_date}`;
+      
+      await notificationsService.createNotification(userId, notifTitle, notifMessage);
+      console.log("🔔 Notification created for Budget/Goal");
+    } catch (notifError) {
+      console.error("Notification Error:", notifError);
+    }
+    // -------------------------------
+
+    // 4. Send Response back to App
+    res.status(201).json({
+      success: true,
+      data: budget,
+      message: 'Budget goal set successfully'
+    });
+
   } catch (error) {
     next(error);
   }
@@ -123,7 +133,7 @@ async function updateBudget(req, res, next) {
     const { id } = req.params;
     const { budget_amount, period, start_date, end_date, category_id } = req.body;
     // TODO: Extract user_id from authentication token
-    const userId = req.query.user_id || 'default_user';
+    const userId = req.query.user_id || 1;
     
     if (budget_amount !== undefined && (typeof budget_amount !== 'number' || budget_amount <= 0)) {
       return res.status(400).json({
@@ -172,7 +182,7 @@ async function deleteBudget(req, res, next) {
   try {
     const { id } = req.params;
     // TODO: Extract user_id from authentication token
-    const userId = req.query.user_id || 'default_user';
+    const userId = req.query.user_id || 1;
     
     const deleted = await budgetService.deleteBudget(id, userId);
     

@@ -242,6 +242,25 @@ async function initDb() {
       });
 
       /**
+       * TABLE 6: Notifications
+       * Stores logs for every transaction and goal action
+       */
+      db.run(`
+        CREATE TABLE IF NOT EXISTS Notifications (
+          notification_id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL,
+          title TEXT NOT NULL,
+          message TEXT NOT NULL,
+          is_read INTEGER DEFAULT 0,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (user_id) REFERENCES Users(user_id) ON DELETE CASCADE
+        )
+      `, (err) => {
+        if (err) console.error('Failed to create Notifications table:', err);
+        else console.log('Notifications table created');
+      });
+
+      /**
        * INDEXES FOR PERFORMANCE
        * 
        * These indexes ensure fast queries for:

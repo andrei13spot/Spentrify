@@ -10,10 +10,20 @@ const { initDb, run } = require('./database/connection');
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 
 const transactionsRoutes = require('./routes/transactions');
-const categoriesRoutes = require('./routes/categories'); // ADDED: Import Categories routes
+const categoriesRoutes = require('./routes/categories'); 
+const budgetsRoutes = require('./routes/budgets');
+const notificationsRoutes = require('./routes/notifications');
 
 const app = express();
 const port = process.env.PORT || 3000;
+
+// --- DEBUGGER CODE (Isingit mo to) ---
+console.log("Check Routes Type:");
+console.log("Transactions:", typeof transactionsRoutes);
+console.log("Categories:", typeof categoriesRoutes);
+console.log("Notifications:", typeof notificationsRoutes);
+console.log("Budgets:", typeof budgetsRoutes); // <-- Dapat 'function', HINDI 'object'
+// -------------------------------------
 
 // ADDED: Enable CORS para tanggapin ang request mula sa Emulator/Mobile
 app.use(cors());
@@ -34,15 +44,18 @@ app.get('/fix-database', async (req, res) => {
     // Force Create Category 1 (Food)
     await run(`INSERT OR IGNORE INTO Categories (category_id, category_name, is_itr_deductible) VALUES (1, 'Food', 0)`);
 
-    res.send('✅ SUCCESS: Database fixed! User 1 and Category 1 are now ready.');
+    res.send('SUCCESS: Database fixed! User 1 and Category 1 are now ready.');
   } catch (error) {
-    res.send('❌ ERROR: ' + error.message);
+    res.send('ERROR: ' + error.message);
   }
 });
 
 // transactions API (main thing for this project)
 app.use('/api/transactions', transactionsRoutes);
 app.use('/api/categories', categoriesRoutes); // ADDED: Enable Categories endpoint
+app.use('/api/notifications', notificationsRoutes);
+app.use('/api/budgets', budgetsRoutes);
+app.use('/api/goals', budgetsRoutes);
 
 // 404 handler
 app.use(notFoundHandler);

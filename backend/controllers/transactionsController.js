@@ -1,20 +1,16 @@
 /**
  * Transactions Controller
- * * Handles HTTP requests for transaction operations.
- * Includes logic for:
- * 1. Transaction Detection (SMS Parsing for Pop-up)
- * 2. CRUD Operations (Create, Read, Update, Delete)
+ * Handles HTTP requests for transaction operations.
  */
 
 const transactionService = require('../services/transactionsService');
 const categoriesService = require('../services/categoriesService');
-const { parseNotification } = require('../services/categoriesService');
+const notificationsService = require('../services/notificationsService');
+// Import database helper directly for the fix
+const { run } = require('../database/connection'); 
 
 /**
  * FEATURE: Transaction Detection
- * POST /api/transactions/detect
- * * Tinatawag ng Mobile App Listener kapag may na-receive na SMS/Notification.
- * Returns parsed data (amount, merchant, suggested category) para sa Pop-up UI.
  */
 async function detectTransaction(req, res, next) {
   try {
@@ -27,11 +23,8 @@ async function detectTransaction(req, res, next) {
       });
     }
 
-    // 1. I-parse ang text gamit ang Parser Service
     const detectedData = await categoriesService.parseNotification(raw_text, user_id || 'default_user');
 
-    // 2. I-return ang data sa frontend para ipakita sa "New Transaction Pop Up Page"
-    // Note: Hindi pa ito sine-save sa database. Hinihintay nito ang 'Confirm' tap ng user.
     res.json({
       success: true,
       data: detectedData,
@@ -44,12 +37,10 @@ async function detectTransaction(req, res, next) {
 
 /**
  * Get all transactions
- * GET /api/transactions
  */
 async function getAllTransactions(req, res, next) {
   try {
     const userId = 1;
-    
     const transactions = await transactionService.getAllTransactions(userId);
     
     res.json({
@@ -64,7 +55,6 @@ async function getAllTransactions(req, res, next) {
 
 /**
  * Get a single transaction by ID
- * GET /api/transactions/:id
  */
 async function getTransactionById(req, res, next) {
   try {
@@ -90,25 +80,24 @@ async function getTransactionById(req, res, next) {
 }
 
 /**
- * Create a new transaction (Used by "Confirm" button in Pop-up & Manual Add)
- * POST /api/transactions
- */
-/**
  * Create Transaction (Manual / Pop-up Confirm)
+ * FIXED: Auto-creates User & Category to prevent DB Crashes
  */
 async function createTransaction(req, res, next) {
   try {
-    // 1. Kunin ang database helpers (run lang ang kailangan natin dito)
-    const { run } = require('../database/connection');
+    // 1. Setup Defaults
+    const userId = 1; // Force User 1 for now
+    const catId = req.body.category_id || 13; // Default to 'Others' (13) if null
+
+    // 2. --- SAFETY CHECK (THE FIX) ---
+    // Ensure User 1 exists in DB
+    await run(`INSERT OR IGNORE INTO Users (user_id, email_encrypted, passcode_hash) VALUES (1, 'default_user_enc', 'pass123')`);
     
-    // Pansamantala, User ID 1 muna habang wala pang Login page
-    const userId = 1; 
-    const catId = req.body.category_id || 1;
+    // Ensure the chosen Category exists in DB (Avoids Foreign Key Error)
+    // We insert a generic placeholder if it doesn't exist yet
+    await run(`INSERT OR IGNORE INTO Categories (category_id, category_name, is_itr_deductible) VALUES (?, 'System Category', 0)`, [catId]);
+    // -----------------------------
 
-    await run(`INSERT OR IGNORE INTO Users (user_id, email_encrypted) VALUES (1, 'default_user_enc')`);
-    await run(`INSERT OR IGNORE INTO Categories (category_id, category_name) VALUES (?, ?)`, [catId, 'General']);
-
- 
     const cleanData = {
       user_id: userId,
       category_id: catId,
@@ -121,14 +110,24 @@ async function createTransaction(req, res, next) {
       is_manual: req.body.is_manual || 0
     };
 
-    // 4. Tawagin ang service para sa encryption at actual saving
-    const transactionService = require('../services/transactionsService');
+    // 3. Save Transaction
     const transaction = await transactionService.createTransaction(cleanData);
 
     console.log("SUCCESS: Transaction Saved!");
     console.log("Amount:", cleanData.amount);
-    console.log("Merchant:", cleanData.merchant_name);
 
+    // 4. Trigger Notification (Fire and Forget)
+    try {
+      const notifTitle = "Transaction Confirmed";
+      const notifMessage = `PHP ${cleanData.amount} • ${req.body.description || 'Expense'}`;
+      
+      await notificationsService.createNotification(userId, notifTitle, notifMessage);
+      console.log("Notification created");
+    } catch (notifError) {
+      console.error("Notification Error (Ignored):", notifError);
+    }
+
+    // 5. Send Response
     res.status(201).json({
       success: true,
       data: transaction,
@@ -143,15 +142,13 @@ async function createTransaction(req, res, next) {
 
 /**
  * Update an existing transaction
- * PUT /api/transactions/:id
  */
 async function updateTransaction(req, res, next) {
   try {
     const { id } = req.params;
     const { amount, description, category_id, transaction_date } = req.body;
-    const userId = req.query.user_id || 'default_user';
+    const userId = req.query.user_id || 1;
     
-    // Input validation
     if (amount !== undefined && (typeof amount !== 'number' || amount <= 0)) {
       return res.status(400).json({
         success: false,
@@ -185,7 +182,6 @@ async function updateTransaction(req, res, next) {
 
 /**
  * Delete a transaction
- * DELETE /api/transactions/:id
  */
 async function deleteTransaction(req, res, next) {
   try {
@@ -211,11 +207,10 @@ async function deleteTransaction(req, res, next) {
 }
 
 module.exports = {
-  detectTransaction, // ADDED: Export the new endpoint
+  detectTransaction,
   getAllTransactions,
   getTransactionById,
   createTransaction,
   updateTransaction,
-  deleteTransaction,
-  parseNotification
+  deleteTransaction
 };
