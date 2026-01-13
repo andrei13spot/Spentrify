@@ -1,46 +1,10 @@
-/**
- * Transactions Controller
- * Handles HTTP requests for transaction operations.
- */
-
 const transactionService = require('../services/transactionsService');
-const categoriesService = require('../services/categoriesService');
-const notificationsService = require('../services/notificationsService');
-// Import database helper directly for the fix
-const { run } = require('../database/connection'); 
 
-/**
- * FEATURE: Transaction Detection
- */
-async function detectTransaction(req, res, next) {
-  try {
-    const { raw_text, user_id } = req.body;
-
-    if (!raw_text) {
-      return res.status(400).json({ 
-        success: false, 
-        error: { message: 'Missing raw_text field' } 
-      });
-    }
-
-    const detectedData = await categoriesService.parseNotification(raw_text, user_id || 'default_user');
-
-    res.json({
-      success: true,
-      data: detectedData,
-      message: 'Transaction detected successfully'
-    });
-  } catch (error) {
-    next(error);
-  }
-}
-
-/**
- * Get all transactions
- */
 async function getAllTransactions(req, res, next) {
   try {
-    const userId = 1;
+    // in a real app user_id would come from auth
+    const userId = req.query.user_id || 'default_user';
+    
     const transactions = await transactionService.getAllTransactions(userId);
     
     res.json({
@@ -53,9 +17,6 @@ async function getAllTransactions(req, res, next) {
   }
 }
 
-/**
- * Get a single transaction by ID
- */
 async function getTransactionById(req, res, next) {
   try {
     const { id } = req.params;
@@ -79,76 +40,60 @@ async function getTransactionById(req, res, next) {
   }
 }
 
-/**
- * Create Transaction (Manual / Pop-up Confirm)
- * FIXED: Auto-creates User & Category to prevent DB Crashes
- */
 async function createTransaction(req, res, next) {
   try {
-    // 1. Setup Defaults
-    const userId = 1; // Force User 1 for now
-    const catId = req.body.category_id || 13; // Default to 'Others' (13) if null
-
-    // 2. --- SAFETY CHECK (THE FIX) ---
-    // Ensure User 1 exists in DB
-    await run(`INSERT OR IGNORE INTO Users (user_id, email_encrypted, passcode_hash) VALUES (1, 'default_user_enc', 'pass123')`);
+    // Accept both 'description' (for backward compatibility) and 'merchant_name' (correct field)
+    const { user_id, amount, description, merchant_name, transaction_date, category_id } = req.body;
     
-    // Ensure the chosen Category exists in DB (Avoids Foreign Key Error)
-    // We insert a generic placeholder if it doesn't exist yet
-    await run(`INSERT OR IGNORE INTO Categories (category_id, category_name, is_itr_deductible) VALUES (?, 'System Category', 0)`, [catId]);
-    // -----------------------------
-
-    const cleanData = {
-      user_id: userId,
-      category_id: catId,
-      amount: req.body.amount,
-      merchant_name: req.body.merchant || req.body.merchant_name || 'General Merchant',
-      description: req.body.description || req.body.merchant || 'Manual Transaction',
-      transaction_date: req.body.transaction_date || new Date().toISOString(),
-      source_type: req.body.source_type || 'Digital', 
-      reference_number: req.body.reference_number || null,
-      is_manual: req.body.is_manual || 0
-    };
-
-    // 3. Save Transaction
-    const transaction = await transactionService.createTransaction(cleanData);
-
-    console.log("SUCCESS: Transaction Saved!");
-    console.log("Amount:", cleanData.amount);
-
-    // 4. Trigger Notification (Fire and Forget)
-    try {
-      const notifTitle = "Transaction Confirmed";
-      const notifMessage = `PHP ${cleanData.amount} • ${req.body.description || 'Expense'}`;
-      
-      await notificationsService.createNotification(userId, notifTitle, notifMessage);
-      console.log("Notification created");
-    } catch (notifError) {
-      console.error("Notification Error (Ignored):", notifError);
+    // Input validation
+    if (!user_id || amount === undefined || !transaction_date) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'Missing required fields: user_id, amount, transaction_date' }
+      });
     }
-
-    // 5. Send Response
+    
+    if (typeof amount !== 'number' || amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'Amount must be a positive number' }
+      });
+    }
+    
+    // Use merchant_name if provided, otherwise fall back to description for backward compatibility
+    const merchantName = merchant_name || description || null;
+    
+    const transaction = await transactionService.createTransaction({
+      user_id,
+      amount,
+      merchant_name: merchantName,
+      transaction_date,
+      category_id: category_id || null
+    });
+    
     res.status(201).json({
       success: true,
       data: transaction,
-      message: 'Transaction saved successfully!'
+      message: 'Transaction created successfully'
     });
-
   } catch (error) {
-    console.error("SAVE ERROR:", error);
     next(error);
   }
 }
 
 /**
  * Update an existing transaction
+ * PUT /api/transactions/:id
  */
 async function updateTransaction(req, res, next) {
   try {
     const { id } = req.params;
-    const { amount, description, category_id, transaction_date } = req.body;
-    const userId = req.query.user_id || 1;
+    // Accept both 'description' (for backward compatibility) and 'merchant_name' (correct field)
+    const { amount, description, merchant_name, category_id, transaction_date } = req.body;
+    // TODO: Extract user_id from authentication token
+    const userId = req.query.user_id || 'default_user';
     
+    // Input validation
     if (amount !== undefined && (typeof amount !== 'number' || amount <= 0)) {
       return res.status(400).json({
         success: false,
@@ -156,9 +101,12 @@ async function updateTransaction(req, res, next) {
       });
     }
     
+    // Use merchant_name if provided, otherwise fall back to description for backward compatibility
+    const merchantName = merchant_name !== undefined ? merchant_name : (description !== undefined ? description : undefined);
+    
     const transaction = await transactionService.updateTransaction(id, userId, {
       amount,
-      description,
+      merchant_name: merchantName,
       category_id,
       transaction_date
     });
@@ -182,10 +130,12 @@ async function updateTransaction(req, res, next) {
 
 /**
  * Delete a transaction
+ * DELETE /api/transactions/:id
  */
 async function deleteTransaction(req, res, next) {
   try {
     const { id } = req.params;
+    // TODO: Extract user_id from authentication token
     const userId = req.query.user_id || 'default_user';
     
     const deleted = await transactionService.deleteTransaction(id, userId);
@@ -207,10 +157,10 @@ async function deleteTransaction(req, res, next) {
 }
 
 module.exports = {
-  detectTransaction,
   getAllTransactions,
   getTransactionById,
   createTransaction,
   updateTransaction,
   deleteTransaction
 };
+

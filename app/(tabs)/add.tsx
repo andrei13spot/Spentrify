@@ -5,13 +5,13 @@ import {
   FlatList,
   Modal,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import axios from 'axios'; // 1. IMPORT AXIOS
 
 import TransactionConfirmedModal from "../../components/TransactionConfirmedModal";
 import TransactionErrorModal from "../../components/TransactionErrorModal";
@@ -35,23 +35,6 @@ const CATEGORIES = [
   "Subscriptions",
   "Others",
 ];
-
-// 2. MAPPING: UI Strings -> Database IDs
-const CATEGORY_MAP: Record<string, number> = {
-  "Food": 1,
-  "Groceries": 2, // Assuming mapped to Food or separate
-  "Transportation": 3,
-  "Electricity": 4,
-  "Water": 5,
-  "Internet": 6,
-  "Rent": 7,
-  "Entertainment": 8,
-  "Shopping": 9,
-  "Health": 10,
-  "Education": 11,
-  "Subscriptions": 12,
-  "Others": 13,
-};
 
 /* ================= SCREEN ================= */
 
@@ -78,21 +61,17 @@ export default function AddTransaction() {
   const [amount, setAmount] = useState("");
   const [details, setDetails] = useState("");
   const [category, setCategory] = useState("Select Category");
-  
-  // Set default date to today for better UX
-  const today = new Date();
-  const defaultDateStr = `${String(today.getMonth() + 1).padStart(2, '0')}/${String(today.getDate()).padStart(2, '0')}/${today.getFullYear()}`;
-  const [date, setDate] = useState(defaultDateStr);
+  const [date, setDate] = useState("01/01/2025");
+  const [isReimbursable, setIsReimbursable] = useState(false);
 
   /* ================= UI STATE ================= */
   const [showCategory, setShowCategory] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [loading, setLoading] = useState(false); // Add loading state
 
   /* ================= TEMP DATE INPUTS ================= */
-  const [tempMonth, setTempMonth] = useState(String(today.getMonth() + 1).padStart(2, '0'));
-  const [tempDay, setTempDay] = useState(String(today.getDate()).padStart(2, '0'));
-  const [tempYear, setTempYear] = useState(String(today.getFullYear()));
+  const [tempMonth, setTempMonth] = useState("01");
+  const [tempDay, setTempDay] = useState("01");
+  const [tempYear, setTempYear] = useState("2025");
 
   /* ================= RESET ================= */
 
@@ -100,13 +79,15 @@ export default function AddTransaction() {
     setAmount("");
     setDetails("");
     setCategory("Select Category");
-    setDate(defaultDateStr);
+    setDate("01/01/2025");
+    setTempMonth("01");
+    setTempDay("01");
+    setTempYear("2025");
   };
 
-  /* ================= CONFIRM (BACKEND INTEGRATED) ================= */
+  /* ================= CONFIRM ================= */
 
-  const handleConfirmTransaction = async () => {
-    // 1. Validation
+  const handleConfirmTransaction = () => {
     if (!amount || Number(amount) <= 0) {
       setErrorMessage("Please enter a valid amount.");
       setShowError(true);
@@ -125,7 +106,6 @@ export default function AddTransaction() {
       return;
     }
 
-    // 2. Prepare Data for UI Updates (Notifications/Modals)
     const now = new Date();
     const formattedDate = now.toLocaleDateString();
     const formattedTime = now.toLocaleTimeString([], {
@@ -133,81 +113,42 @@ export default function AddTransaction() {
       minute: "2-digit",
     });
 
-    setLoading(true);
+    const newTransaction = {
+      id: Date.now().toString(),
+      name: details,
 
-    try {
-        // 3. BACKEND INTEGRATION: Only run if it's a Transaction (not a Goal)
-        if (!isGoal) {
-            // Get DB ID from the Map, default to 13 (Others) if not found
-            const dbCategoryId = CATEGORY_MAP[category] || 13;
+      // ✅ CRITICAL: isolate goals from transactions
+      category: isGoal ? "goal" : category,
 
-            // Convert UI Date (MM/DD/YYYY) to ISO String for DB
-            const dateParts = date.split('/'); // [MM, DD, YYYY]
-            // Create date object (Month is 0-indexed in JS)
-            const isoDate = new Date(
-                parseInt(dateParts[2]), 
-                parseInt(dateParts[0]) - 1, 
-                parseInt(dateParts[1])
-            ).toISOString();
+      amount: Number(amount),
+      date,
+      createdAt: now.toISOString(),
 
-            const payload = {
-                user_id: 1, // Default user
-                amount: parseFloat(amount),
-                merchant_name: details, // Use details as merchant/title
-                description: details,
-                category_id: dbCategoryId,
-                transaction_date: isoDate,
-                source_type: 'Manual',
-                is_manual: 1
-            };
+      // ✅ prevent phantom spend
+      spent: 0,
+      expenses: [],
 
-            console.log("Saving to Backend:", payload);
+      // ✅ UC-7: Reimbursement Mode
+      isReimbursable: isReimbursable,
+    };
 
-            // SEND TO BACKEND
-            await axios.post('http://10.0.2.2:3000/api/transactions', payload);
-            console.log("✅ Saved to Database!");
-        }
+    addTransaction(newTransaction);
 
-        // 4. Update Context & Notifications (Keep existing logic for instant UI feedback)
-        const newTransaction = {
-            id: Date.now().toString(),
-            name: details,
-            category: isGoal ? "goal" : category,
-            amount: Number(amount),
-            date,
-            createdAt: now.toISOString(),
-            spent: 0,
-            expenses: [],
-        };
+    addNotification({
+      title: isGoal ? "Goal Added" : "Transaction Confirmed",
+      message: `₱${amount} • ${isGoal ? "Goal" : category}\n${details}`,
+      date: formattedDate,
+    });
 
-        addTransaction(newTransaction);
-
-        addNotification({
-            title: isGoal ? "Goal Added" : "Transaction Confirmed",
-            message: `₱${amount} • ${isGoal ? "Goal" : category}\n${details}`,
-            date: formattedDate,
-        });
-
-        setConfirmedDate(formattedDate);
-        setConfirmedTime(formattedTime);
-        setShowModal(true);
-
-    } catch (error) {
-        console.error("Backend Error:", error);
-        setErrorMessage("Failed to save to database. Check connection.");
-        setShowError(true);
-    } finally {
-        setLoading(false);
-    }
+    setConfirmedDate(formattedDate);
+    setConfirmedTime(formattedTime);
+    setShowModal(true);
   };
 
   /* ================= DATE CONFIRM ================= */
 
   const confirmDate = () => {
-    // Pad with zeros for consistency
-    const m = tempMonth.padStart(2, '0');
-    const d = tempDay.padStart(2, '0');
-    setDate(`${m}/${d}/${tempYear}`);
+    setDate(`${tempMonth}/${tempDay}/${tempYear}`);
     setShowDatePicker(false);
   };
 
@@ -272,14 +213,31 @@ export default function AddTransaction() {
           </TouchableOpacity>
         </View>
 
+        {/* REIMBURSABLE TOGGLE (UC-7) */}
+        {!isGoal && (
+          <View style={styles.reimbursableRow}>
+            <View style={styles.reimbursableLabelContainer}>
+              <Ionicons name="receipt-outline" size={20} color="#3B82F6" />
+              <Text style={styles.reimbursableLabel}>
+                Mark as Reimbursable
+              </Text>
+            </View>
+            <Switch
+              value={isReimbursable}
+              onValueChange={setIsReimbursable}
+              trackColor={{ false: "#D1D5DB", true: "#3B82F6" }}
+              thumbColor="#FFFFFF"
+            />
+          </View>
+        )}
+
         {/* CONFIRM */}
         <TouchableOpacity
-          style={[styles.confirmButton, { opacity: loading ? 0.7 : 1 }]}
+          style={styles.confirmButton}
           onPress={handleConfirmTransaction}
-          disabled={loading}
         >
           <Text style={styles.confirmText}>
-            {loading ? "Saving..." : (isGoal ? "Confirm Goal" : "Confirm Transaction")}
+            {isGoal ? "Confirm Goal" : "Confirm Transaction"}
           </Text>
         </TouchableOpacity>
 
@@ -319,7 +277,6 @@ export default function AddTransaction() {
                   onChangeText={setTempMonth}
                   keyboardType="numeric"
                   placeholder="MM"
-                  maxLength={2}
                 />
                 <TextInput
                   style={styles.dateInput}
@@ -327,7 +284,6 @@ export default function AddTransaction() {
                   onChangeText={setTempDay}
                   keyboardType="numeric"
                   placeholder="DD"
-                  maxLength={2}
                 />
                 <TextInput
                   style={styles.dateInput}
@@ -335,7 +291,6 @@ export default function AddTransaction() {
                   onChangeText={setTempYear}
                   keyboardType="numeric"
                   placeholder="YYYY"
-                  maxLength={4}
                 />
               </View>
 
@@ -364,6 +319,8 @@ export default function AddTransaction() {
           onClose={() => {
             setShowModal(false);
             resetForm();
+
+            // ✅ FINAL FIX: redirect based on mode
             router.replace(isGoal ? "/(tabs)/goals" : "/(tabs)/home");
           }}
         />
@@ -434,7 +391,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
     padding: 12,
-    maxHeight: 400, // Added max height to modal
   },
   modalItem: { padding: 14 },
   modalText: { fontSize: 16 },
@@ -458,5 +414,26 @@ const styles = StyleSheet.create({
     padding: 12,
     width: "30%",
     textAlign: "center",
+  },
+  reimbursableRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    marginBottom: 16,
+    backgroundColor: "#F9FAFB",
+    borderRadius: 12,
+    padding: 14,
+  },
+  reimbursableLabelContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  reimbursableLabel: {
+    fontSize: 14,
+    color: "#374151",
+    fontWeight: "500",
   },
 });

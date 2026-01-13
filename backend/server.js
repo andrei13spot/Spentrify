@@ -3,30 +3,28 @@
 
 require('dotenv').config();
 
-
 const express = require('express');
-const cors = require('cors'); // ADDED: Import cors
-const { initDb, run } = require('./database/connection');
+const cors = require('cors');
+const { initDb } = require('./database/connection');
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 
 const transactionsRoutes = require('./routes/transactions');
-const categoriesRoutes = require('./routes/categories'); 
+const authRoutes = require('./routes/auth');
 const budgetsRoutes = require('./routes/budgets');
-const notificationsRoutes = require('./routes/notifications');
+const categoriesRoutes = require('./routes/categories');
+const exportsRoutes = require('./routes/exports');
 
 const app = express();
 const port = process.env.PORT || 3000;
 
-// --- DEBUGGER CODE (Isingit mo to) ---
-console.log("Check Routes Type:");
-console.log("Transactions:", typeof transactionsRoutes);
-console.log("Categories:", typeof categoriesRoutes);
-console.log("Notifications:", typeof notificationsRoutes);
-console.log("Budgets:", typeof budgetsRoutes); // <-- Dapat 'function', HINDI 'object'
-// -------------------------------------
-
-// ADDED: Enable CORS para tanggapin ang request mula sa Emulator/Mobile
-app.use(cors());
+// Enable CORS for React Native app
+// This allows the mobile app to make requests to the backend
+app.use(cors({
+  origin: '*', // Allow all origins (for development)
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: false
+}));
 
 // parse JSON bodies
 app.use(express.json());
@@ -36,26 +34,20 @@ app.get('/', (req, res) => {
   res.json({ message: 'Spentrify backend is running' });
 });
 
-app.get('/fix-database', async (req, res) => {
-  try {
-    // Force Create User 1
-    await run(`INSERT OR IGNORE INTO Users (user_id, email_encrypted, passcode_hash) VALUES (1, 'default_user', 'pass123')`);
-    
-    // Force Create Category 1 (Food)
-    await run(`INSERT OR IGNORE INTO Categories (category_id, category_name, is_itr_deductible) VALUES (1, 'Food', 0)`);
-
-    res.send('SUCCESS: Database fixed! User 1 and Category 1 are now ready.');
-  } catch (error) {
-    res.send('ERROR: ' + error.message);
-  }
-});
+// authentication API
+app.use('/api/auth', authRoutes);
 
 // transactions API (main thing for this project)
 app.use('/api/transactions', transactionsRoutes);
-app.use('/api/categories', categoriesRoutes); // ADDED: Enable Categories endpoint
-app.use('/api/notifications', notificationsRoutes);
+
+// budgets API
 app.use('/api/budgets', budgetsRoutes);
-app.use('/api/goals', budgetsRoutes);
+
+// categories API
+app.use('/api/categories', categoriesRoutes);
+
+// exports API (UC-6: ITR Support, UC-7: Reimbursement Mode)
+app.use('/api/exports', exportsRoutes);
 
 // 404 handler
 app.use(notFoundHandler);
@@ -68,12 +60,11 @@ initDb()
   .then(() => {
     console.log('database ready');
     app.listen(port, () => {
-      console.log(`Server listening on port ${port}`);
-      console.log(`Android Emulator URL: http://10.0.2.2:${port}`);
+      console.log(`server listening on port ${port}`);
     });
   })
   .catch((err) => {
-    console.error('Failed to init database', err);
+    console.error('failed to init database', err);
     process.exit(1);
   });
 

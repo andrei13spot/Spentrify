@@ -5,8 +5,8 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 
 // database file path from .env or default location
-// Gamitin ang process.cwd() para safe kahit anong Node version
-const DB_PATH = process.env.DB_PATH || path.join(process.cwd(), 'spentrify_v2.db');
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', 'spentrify.db');
+
 let db = null;
 
 // small helper so we can use db.query with promises
@@ -31,7 +31,7 @@ function run(sql, params = []) {
         console.error('db error:', err);
         return reject(err);
       }
-      // 'this' contains lastID and changes
+      // 'this' has info about what happened (like the new ID)
       resolve({
         lastID: this.lastID,
         changes: this.changes
@@ -64,20 +64,14 @@ function run(sql, params = []) {
  *    - Can be category-specific or overall
  *    - Supports different periods (Monthly, Weekly, etc.)
  * 
- * 5. AI_Insights - Auto-Audit Engine output
- *    - Stores AI-generated insights and alerts
- *    - Tracks read/unread status
- * 
- * ENCRYPTION NOTES:
- * - Sensitive fields use _encrypted suffix (amount_encrypted, email_encrypted, etc.)
- * - Encryption service handles AES-256-GCM encryption/decryption
- * - Foreign keys ensure data integrity
- * - Indexes improve query performance (< 2 second dashboard load requirement)
+ * Note: We encrypt sensitive stuff (emails, amounts) before saving
+ * Foreign keys make sure data stays consistent (if user deleted, their transactions go too)
+ * Indexes make queries faster (so dashboard loads quick)
  */
 
 async function initDb() {
   return new Promise((resolve, reject) => {
-    // open or create the database file
+    // Open the database file (creates it if it doesn't exist)
     db = new sqlite3.Database(DB_PATH, (err) => {
       if (err) {
         console.error('failed to open database:', err);
@@ -86,22 +80,24 @@ async function initDb() {
       console.log('connected to SQLite database');
     });
 
-    // Enable foreign key constraints (SQLite requires this to be enabled)
+    // Turn on foreign keys - SQLite needs this to enforce relationships
+    // Without this, foreign keys won't work!
     db.run('PRAGMA foreign_keys = ON', (err) => {
       if (err) {
         console.warn('warning: could not enable foreign keys:', err);
       }
     });
 
-    // Execute all table creation statements
-    // We use a transaction to ensure all tables are created atomically
+    // Create all tables
+    // Using a transaction so if something fails, we rollback everything
+    // Either all tables get created, or none of them do
     db.serialize(() => {
       db.run('BEGIN TRANSACTION');
 
-      /**
-       * TABLE 1: Users
-       * Stores user accounts, authentication, and sync preferences
-       */
+      // TABLE 1: Users - stores login info
+      // email_encrypted: encrypted email (we encrypt it before saving)
+      // passcode_hash: hashed password (never store plain passwords!)
+      // is_cloud_sync_enabled: whether user wants cloud backup (0 = no, 1 = yes)
       db.run(`
         CREATE TABLE IF NOT EXISTS Users (
           user_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -120,11 +116,9 @@ async function initDb() {
         console.log('✓ Users table created');
       });
 
-      /**
-       * TABLE 2: Categories
-       * Pre-defined and user-defined spending categories
-       * Used for organizing transactions and ITR support
-       */
+      // TABLE 2: Categories - spending categories like Food, Transport, etc.
+      // category_name: must be unique (can't have two "Food" categories)
+      // is_itr_deductible: 1 if it counts for tax deductions, 0 if not
       db.run(`
         CREATE TABLE IF NOT EXISTS Categories (
           category_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -142,19 +136,13 @@ async function initDb() {
         console.log('✓ Categories table created');
       });
 
-      /**
-       * TABLE 3: Transactions
-       * Core table storing all financial transactions
-       * Supports both automated (SMS parsing) and manual entries
-       * 
-       * IMPORTANT FIELDS:
-       * - amount_encrypted: Encrypted decimal value (use encryption service)
-       * - merchant_name: Encrypted merchant/store name
-       * - source_type: 'GCash', 'Maya', 'BDO', 'Cash', etc.
-       * - reference_number: Unique ID from SMS/Push (indexed for fast duplicate check)
-       * - is_manual: 1 for cash transactions, 0 for digital
-       * - is_reimbursable: Flag for expense reimbursement tracking
-       */
+      // TABLE 3: Transactions - the main table! stores all spending
+      // amount_encrypted: encrypted amount (encrypt before saving)
+      // merchant_name_encrypted: encrypted store name
+      // source_type: where the money came from ('GCash', 'Maya', 'BDO', 'Cash')
+      // reference_number: unique ID from SMS (so we don't add duplicates)
+      // is_manual: 1 if user entered manually, 0 if from SMS/auto
+      // is_reimbursable: 1 if this expense can be reimbursed
       db.run(`
         CREATE TABLE IF NOT EXISTS Transactions (
           transaction_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -162,12 +150,12 @@ async function initDb() {
           category_id INTEGER,
           amount_encrypted TEXT NOT NULL,
           merchant_name_encrypted TEXT,
-          description_encrypted TEXT,
           transaction_date DATETIME DEFAULT CURRENT_TIMESTAMP,
           source_type TEXT,
           reference_number TEXT UNIQUE,
           is_manual INTEGER DEFAULT 0,
           is_reimbursable INTEGER DEFAULT 0,
+          receipt_image_path TEXT,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY (user_id) REFERENCES Users(user_id) ON DELETE CASCADE,
           FOREIGN KEY (category_id) REFERENCES Categories(category_id) ON DELETE SET NULL
@@ -181,14 +169,10 @@ async function initDb() {
         console.log('✓ Transactions table created');
       });
 
-      /**
-       * TABLE 4: Budgets
-       * User-defined spending targets and goals
-       * Can be category-specific or overall budget
-       * 
-       * PERIOD VALUES: 'Daily', 'Weekly', 'Monthly', 'Yearly'
-       * category_id: NULL means overall budget, otherwise category-specific
-       */
+      // TABLE 4: Budgets - spending limits users set
+      // category_id: NULL means overall budget, otherwise it's for a specific category
+      // period: 'Daily', 'Weekly', 'Monthly', or 'Yearly'
+      // target_amount_encrypted: encrypted budget amount
       db.run(`
         CREATE TABLE IF NOT EXISTS Budgets (
           budget_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -212,16 +196,10 @@ async function initDb() {
         console.log('✓ Budgets table created');
       });
 
-      /**
-       * TABLE 5: AI_Insights
-       * Stores Auto-Audit Engine generated insights and alerts
-       * 
-       * INSIGHT TYPES:
-       * - 'Overspending': User exceeded budget
-       * - 'Subscription': Recurring payment detected
-       * - 'Habit': Spending pattern identified
-       * - 'ITR': Tax-deductible expense reminder
-       */
+      // TABLE 5: AI_Insights - AI suggestions and alerts
+      // insight_type: what kind of insight ('Overspending', 'Subscription', 'Habit', 'ITR')
+      // message: the actual message to show user
+      // is_read: 0 = unread, 1 = read
       db.run(`
         CREATE TABLE IF NOT EXISTS AI_Insights (
           insight_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -241,36 +219,11 @@ async function initDb() {
         console.log('✓ AI_Insights table created');
       });
 
-      /**
-       * TABLE 6: Notifications
-       * Stores logs for every transaction and goal action
-       */
-      db.run(`
-        CREATE TABLE IF NOT EXISTS Notifications (
-          notification_id INTEGER PRIMARY KEY AUTOINCREMENT,
-          user_id INTEGER NOT NULL,
-          title TEXT NOT NULL,
-          message TEXT NOT NULL,
-          is_read INTEGER DEFAULT 0,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY (user_id) REFERENCES Users(user_id) ON DELETE CASCADE
-        )
-      `, (err) => {
-        if (err) console.error('Failed to create Notifications table:', err);
-        else console.log('Notifications table created');
-      });
-
-      /**
-       * INDEXES FOR PERFORMANCE
-       * 
-       * These indexes ensure fast queries for:
-       * 1. Finding transactions by user (dashboard load < 2 seconds)
-       * 2. Checking duplicate reference numbers (< 1 second pop-up)
-       * 3. Filtering by category and date
-       * 4. Finding budgets by user and category
-       */
+      // INDEXES - these make queries faster
+      // Without indexes, queries can be slow. With them, queries are much faster!
+      // Think of it like an index in a book - helps you find stuff quickly
       
-      // Index for fast user transaction queries
+      // Index for finding user's transactions (makes dashboard load fast)
       db.run(`
         CREATE INDEX IF NOT EXISTS idx_transactions_user_date 
         ON Transactions(user_id, transaction_date DESC)
@@ -278,7 +231,7 @@ async function initDb() {
         if (err) console.warn('index creation warning:', err);
       });
 
-      // Index for duplicate reference number check (critical for SMS parsing)
+      // Index for checking duplicate transactions (important for SMS parsing)
       db.run(`
         CREATE INDEX IF NOT EXISTS idx_transactions_reference 
         ON Transactions(reference_number)
@@ -286,7 +239,7 @@ async function initDb() {
         if (err) console.warn('index creation warning:', err);
       });
 
-      // Index for category filtering
+      // Index for filtering by category
       db.run(`
         CREATE INDEX IF NOT EXISTS idx_transactions_category 
         ON Transactions(category_id)
@@ -294,7 +247,7 @@ async function initDb() {
         if (err) console.warn('index creation warning:', err);
       });
 
-      // Index for budget queries
+      // Index for finding user's budgets
       db.run(`
         CREATE INDEX IF NOT EXISTS idx_budgets_user_category 
         ON Budgets(user_id, category_id)
@@ -302,7 +255,7 @@ async function initDb() {
         if (err) console.warn('index creation warning:', err);
       });
 
-      // Index for AI insights (unread insights query)
+      // Index for finding unread insights
       db.run(`
         CREATE INDEX IF NOT EXISTS idx_insights_user_read 
         ON AI_Insights(user_id, is_read, created_at DESC)
@@ -310,49 +263,42 @@ async function initDb() {
         if (err) console.warn('index creation warning:', err);
       });
 
-      // Commit transaction
-      db.run('COMMIT', async (err) => {
+      // Save all the table changes (commit the transaction)
+      db.run('COMMIT', (err) => {
         if (err) {
           console.error('failed to commit transaction:', err);
+          db.run('ROLLBACK');
           return reject(err);
         }
+        console.log('✓ Database schema initialized successfully');
         
-        // FIX: Seed Default User and Categories
-        try {
-            await seedDefaultUser(); // <--- ITO ANG BAGONG IDINAGDAG
-            await seedDefaultCategories();
-            console.log('✓ Database initialized with Default User');
+        // Now add default data (categories and test user)
+        seedDefaultCategories()
+          .then(() => {
+            console.log('✓ Default categories seeded');
+            // Add test user after categories are done
+            return seedTestUser();
+          })
+          .then(() => {
+            console.log('✓ Test user seeded');
             resolve();
-        } catch (seedErr) {
-            console.warn('Seeding warning:', seedErr);
+          })
+          .catch((seedErr) => {
+            console.warn('warning: could not seed data:', seedErr);
+            // Don't crash if seeding fails - database is still usable
             resolve();
-        }
+          });
       });
-    });
-  });
- }
-
-// FIX: Add this new function sa baba ng file (before module.exports)
-function seedDefaultUser() {
-  return new Promise((resolve, reject) => {
-    // user ID = 1
-    const sql = `INSERT OR IGNORE INTO Users (user_id, email_encrypted, passcode_hash) 
-                 VALUES (1, 'default_user_enc', 'pass123')`;
-    db.run(sql, (err) => {
-      if (err) reject(err);
-      else {
-        console.log('✓ Default User (ID: 1) created');
-        resolve();
-      }
     });
   });
 }
 
 /**
- * SEED DEFAULT CATEGORIES
+ * Add default categories to the database
  * 
- * Inserts common spending categories that users will need.
- * These match the frontend category list and support ITR tracking.
+ * These are the basic categories everyone needs (Food, Transport, etc.)
+ * Some are ITR deductible (for tax stuff), some aren't
+ * INSERT OR IGNORE means if category already exists, skip it (no duplicates)
  */
 async function seedDefaultCategories() {
   const defaultCategories = [
@@ -390,6 +336,77 @@ async function seedDefaultCategories() {
         }
       });
     });
+  });
+}
+
+/**
+ * Create a test user account for testing
+ * 
+ * This is a dummy account we use for testing the app
+ * Credentials are shared with the team so everyone can test easily
+ * 
+ * TEST CREDENTIALS:
+ * Email: test@spentrify.com
+ * Password: test123
+ * 
+ * Only creates the user if it doesn't exist already (so we don't get duplicates)
+ */
+async function seedTestUser() {
+  // Need these to encrypt email and hash password
+  const encryptionService = require('../services/encryption');
+  const authService = require('../services/authService');
+
+  // Test account credentials (everyone on the team uses these)
+  const TEST_EMAIL = 'test@spentrify.com';
+  const TEST_PASSWORD = 'test123';
+
+  return new Promise(async (resolve, reject) => {
+    try {
+      // Clean up the email (lowercase, no spaces)
+      const normalizedEmail = TEST_EMAIL.trim().toLowerCase();
+      
+      // Check if test user already exists using authService (handles encryption correctly)
+      const existingUser = await authService.findUserByEmail(normalizedEmail);
+
+      // If it exists, verify the password hash is correct (recreate if needed)
+      if (existingUser) {
+        // Test if the password works with current hashing method
+        try {
+          await authService.authenticateUser(TEST_EMAIL, TEST_PASSWORD);
+          console.log('✓ Test user already exists and password is correct');
+          return resolve();
+        } catch (authError) {
+          // Password doesn't match - update it with correct hash
+          console.log('⚠ Test user exists but password hash is incorrect, updating...');
+          const passcodeHash = authService.hashPassword(TEST_PASSWORD);
+          await run(
+            'UPDATE Users SET passcode_hash = ? WHERE user_id = ?',
+            [passcodeHash, existingUser.user_id]
+          );
+          console.log('✓ Test user password updated');
+          return resolve();
+        }
+      }
+
+      // Create the test user using the same hashing method as authService
+      // This ensures consistency between creation and login
+      const passcodeHash = authService.hashPassword(TEST_PASSWORD);
+      const result = await run(
+        'INSERT INTO Users (email_encrypted, passcode_hash) VALUES (?, ?)',
+        [emailEncrypted, passcodeHash]
+      );
+
+      // Log the credentials so team knows what to use
+      console.log(`✓ Test user created with user_id: ${result.lastID}`);
+      console.log(`  Email: ${TEST_EMAIL}`);
+      console.log(`  Password: ${TEST_PASSWORD}`);
+      resolve();
+    } catch (error) {
+      // If creating test user fails, don't crash the whole app
+      // Database is still usable without the test user
+      console.warn('warning: could not create test user:', error.message);
+      resolve();
+    }
   });
 }
 

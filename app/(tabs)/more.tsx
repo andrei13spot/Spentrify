@@ -1,8 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Link, router, type Href } from "expo-router";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
+  Platform,
   ScrollView,
   StyleSheet,
   Switch,
@@ -13,6 +15,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useAuth } from "../../context/AuthContext";
+import { useData } from "../../context/DataContext";
 import { useNotifications } from "../../context/NotificationContext";
 
 /* ================= CONSTANTS ================= */
@@ -35,6 +38,7 @@ interface SettingsItemProps {
   href?: Href;
   switchValue?: boolean;
   onSwitchChange?: () => void;
+  disabled?: boolean;
 }
 
 const SettingsItem = ({
@@ -43,9 +47,10 @@ const SettingsItem = ({
   href,
   switchValue,
   onSwitchChange,
+  disabled = false,
 }: SettingsItemProps) => {
   const content = (
-    <View style={styles.row}>
+    <View style={[styles.row, disabled && { opacity: 0.5 }]}>
       <View style={styles.rowLeft}>
         <View style={styles.iconContainer}>
           <Ionicons name={icon} size={20} color="#333" />
@@ -54,12 +59,17 @@ const SettingsItem = ({
       </View>
 
       {onSwitchChange ? (
-        <Switch
-          value={switchValue}
-          onValueChange={onSwitchChange}
-          trackColor={{ false: "#d1d5db", true: COLORS.primary }}
-          thumbColor="#ffffff"
-        />
+        disabled ? (
+          <ActivityIndicator size="small" color={COLORS.primary} />
+        ) : (
+          <Switch
+            value={switchValue}
+            onValueChange={onSwitchChange}
+            trackColor={{ false: "#d1d5db", true: COLORS.primary }}
+            thumbColor="#ffffff"
+            disabled={disabled}
+          />
+        )
       ) : (
         <Ionicons name="chevron-forward" size={18} color={COLORS.border} />
       )}
@@ -81,20 +91,107 @@ const SettingsItem = ({
 
 /* ================= SCREEN ================= */
 
+/**
+ * Get API base URL (same logic as AuthContext)
+ */
+function getApiBaseUrl(): string {
+  if (process.env.EXPO_PUBLIC_API_URL) {
+    return process.env.EXPO_PUBLIC_API_URL;
+  }
+  if (Platform.OS === 'android') {
+    return "http://10.0.2.2:3000";
+  }
+  return "http://localhost:3000";
+}
+
+const API_BASE_URL = getApiBaseUrl();
+
 export default function SettingsScreen() {
+  const { user, logout } = useAuth();
+  const { clearAllData: clearTransactions } = useData();
+  const { clearAll: clearNotifications } = useNotifications();
+
   const [preferences, setPreferences] = useState({
     cloudSync: false,
-    biometrics: false,
+    biometrics: false, // Local-only, not saved to backend
   });
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  const { logout } = useAuth(); // ✅ AUTH SESSION ONLY
-  const { clearAll: clearNotifications } = useNotifications(); // ✅ NOTIFICATIONS
+  /* ================= FETCH USER PREFERENCES ================= */
 
-  const togglePreference = (key: "cloudSync" | "biometrics") => {
-    setPreferences((prev) => ({
-      ...prev,
-      [key]: !prev[key],
-    }));
+  useEffect(() => {
+    if (user?.id) {
+      fetchUserPreferences();
+    }
+  }, [user?.id]);
+
+  const fetchUserPreferences = async () => {
+    if (!user?.id) return;
+
+    try {
+      setLoading(true);
+      const response = await fetch(`${API_BASE_URL}/api/auth/me?user_id=${user.id}`);
+      const data = await response.json();
+
+      if (data.success && data.data) {
+        setPreferences((prev) => ({
+          ...prev,
+          cloudSync: data.data.is_cloud_sync_enabled || false,
+        }));
+      }
+    } catch (error) {
+      console.error('Error fetching user preferences:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /* ================= UPDATE PREFERENCES ================= */
+
+  const togglePreference = async (key: "cloudSync" | "biometrics") => {
+    // Biometrics is local-only, no backend call needed
+    if (key === "biometrics") {
+      setPreferences((prev) => ({
+        ...prev,
+        [key]: !prev[key],
+      }));
+      return;
+    }
+
+    // Cloud Sync needs to be saved to backend
+    if (key === "cloudSync" && user?.id) {
+      try {
+        setSaving(true);
+        const newValue = !preferences.cloudSync;
+
+        const response = await fetch(`${API_BASE_URL}/api/auth/preferences?user_id=${user.id}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            is_cloud_sync_enabled: newValue,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          setPreferences((prev) => ({
+            ...prev,
+            cloudSync: newValue,
+          }));
+        } else {
+          Alert.alert("Error", "Failed to update cloud sync preference. Please try again.");
+        }
+      } catch (error) {
+        console.error('Error updating preferences:', error);
+        Alert.alert("Error", "Failed to update cloud sync preference. Please try again.");
+      } finally {
+        setSaving(false);
+      }
+    }
   };
 
   const handleLogout = () => {
@@ -104,7 +201,8 @@ export default function SettingsScreen() {
         text: "Log Out",
         style: "destructive",
         onPress: () => {
-          clearNotifications(); // 🔔 clear notifications only
+          clearNotifications(); // 🔔 clear notifications
+          clearTransactions();  // 📊 clear transaction data
           logout();             // 🔐 clear auth session
           router.replace("/");  // ⬅️ back to login
         },
@@ -138,6 +236,18 @@ export default function SettingsScreen() {
           </View>
         </View>
 
+        {/* EXPORTS */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>EXPORTS</Text>
+          <View style={styles.card}>
+            <SettingsItem
+              label="ITR & Reimbursement Exports"
+              icon="document-text-outline"
+              href="/exports"
+            />
+          </View>
+        </View>
+
         {/* PREFERENCES */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>PREFERENCES</Text>
@@ -147,6 +257,7 @@ export default function SettingsScreen() {
               icon="cloud-outline"
               switchValue={preferences.cloudSync}
               onSwitchChange={() => togglePreference("cloudSync")}
+              disabled={saving || loading}
             />
             <View style={styles.divider} />
             <SettingsItem

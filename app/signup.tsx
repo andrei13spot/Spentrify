@@ -1,6 +1,7 @@
 import { router } from "expo-router";
 import { useState } from "react";
 import {
+  ActivityIndicator,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -14,23 +15,84 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import SignupSuccessModal from "../components/SignupSuccessModal";
 import TransactionErrorModal from "../components/TransactionErrorModal";
+import { useAuth } from "../context/AuthContext";
 
 export default function SignUpScreen() {
+  /* ================= AUTH ================= */
+  const { signupWithEmail } = useAuth();
+
+  /* ================= FORM STATE ================= */
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-
   const [showPassword, setShowPassword] = useState(false);
-  const [showSuccess, setShowSuccess] = useState(false);
-  const [showError, setShowError] = useState(false);
 
-  const handleSignup = () => {
-    if (!fullName || !email || !password) {
+  /* ================= UI STATE ================= */
+  const [loading, setLoading] = useState(false);
+
+  /* ================= ERROR STATE ================= */
+  const [showError, setShowError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+
+  /* ================= SUCCESS STATE ================= */
+  const [showSuccess, setShowSuccess] = useState(false);
+
+  /* ================= EMAIL SIGNUP ================= */
+  const handleSignup = async () => {
+    if (loading) return;
+
+    // Validation
+    if (!fullName.trim()) {
+      setErrorMessage("Please enter your full name.");
       setShowError(true);
       return;
     }
 
-    setShowSuccess(true);
+    if (!email.trim()) {
+      setErrorMessage("Please enter your email address.");
+      setShowError(true);
+      return;
+    }
+
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      setErrorMessage("Please enter a valid email address.");
+      setShowError(true);
+      return;
+    }
+
+    if (!password.trim()) {
+      setErrorMessage("Please enter a password.");
+      setShowError(true);
+      return;
+    }
+
+    if (password.length < 6) {
+      setErrorMessage("Password must be at least 6 characters long.");
+      setShowError(true);
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      /**
+       * 🔌 BACKEND READY
+       * POST /api/auth/signup
+       * Creates user account in database
+       */
+      await signupWithEmail(email, password);
+
+      // ✅ SIGNUP SUCCESSFUL → Show success modal
+      setShowSuccess(true);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Signup failed. Please try again.";
+      setErrorMessage(message);
+      setShowError(true);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -52,29 +114,38 @@ export default function SignUpScreen() {
 
             <TextInput
               placeholder="Full Name"
+              placeholderTextColor="#9CA3AF"
               value={fullName}
               onChangeText={setFullName}
               style={styles.input}
+              editable={!loading}
             />
 
             <TextInput
               placeholder="Email"
+              placeholderTextColor="#9CA3AF"
               value={email}
               onChangeText={setEmail}
               keyboardType="email-address"
               autoCapitalize="none"
               style={styles.input}
+              editable={!loading}
             />
 
             <View style={styles.passwordRow}>
               <TextInput
                 placeholder="Password"
+                placeholderTextColor="#9CA3AF"
                 secureTextEntry={!showPassword}
                 value={password}
                 onChangeText={setPassword}
                 style={styles.passwordInput}
+                editable={!loading}
               />
-              <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+              <TouchableOpacity 
+                onPress={() => setShowPassword(!showPassword)}
+                disabled={loading}
+              >
                 <Text style={styles.showText}>
                   {showPassword ? "Hide" : "Show"}
                 </Text>
@@ -82,10 +153,15 @@ export default function SignUpScreen() {
             </View>
 
             <TouchableOpacity
-              style={styles.primaryButton}
+              style={[styles.primaryButton, loading && { opacity: 0.7 }]}
               onPress={handleSignup}
+              disabled={loading}
             >
-              <Text style={styles.primaryButtonText}>Sign Up</Text>
+              {loading ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.primaryButtonText}>Sign Up</Text>
+              )}
             </TouchableOpacity>
 
             <TouchableOpacity onPress={() => router.replace("/")}>
@@ -146,7 +222,7 @@ export default function SignUpScreen() {
       {/* ❌ ERROR MODAL */}
       <TransactionErrorModal
         visible={showError}
-        message="Please fill all informations correctly"
+        message={errorMessage}
         onRetry={() => setShowError(false)}
       />
 
