@@ -20,4 +20,7 @@ router.get('/me', authController.getCurrentUser);
 // PUT /api/auth/preferences - Update user preferences
 router.put('/preferences', authController.updatePreferences);
 
+// PUT /api/auth/profile - Update user profile
+router.put('/profile', authController.updateProfile);
+
 module.exports = router;

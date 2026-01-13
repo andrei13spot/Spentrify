@@ -160,7 +160,7 @@ async function getUserById(userId) {
   }
 
   const rows = await db.query(
-    'SELECT user_id, email_encrypted, is_cloud_sync_enabled, last_sync_timestamp, created_at FROM Users WHERE user_id = ? LIMIT 1',
+    'SELECT user_id, email_encrypted, full_name, phone, is_email_verified, is_cloud_sync_enabled, last_sync_timestamp, created_at FROM Users WHERE user_id = ? LIMIT 1',
     [userId]
   );
 
@@ -175,6 +175,9 @@ async function getUserById(userId) {
   return {
     user_id: user.user_id,
     email: email,
+    full_name: user.full_name || null,
+    phone: user.phone || null,
+    is_email_verified: user.is_email_verified === 1,
     is_cloud_sync_enabled: user.is_cloud_sync_enabled === 1,
     last_sync_timestamp: user.last_sync_timestamp,
     created_at: user.created_at
@@ -221,6 +224,46 @@ async function updateUserPreferences(userId, updates) {
   return getUserById(userId);
 }
 
+/**
+ * Update user profile (name, phone)
+ * @param {number} userId - User ID
+ * @param {Object} updates - Fields to update
+ * @param {string} updates.full_name - User's full name
+ * @param {string} updates.phone - User's phone number
+ * @returns {Promise<Object>} Updated user object
+ */
+async function updateUserProfile(userId, updates) {
+  if (!userId) {
+    throw new Error('User ID is required');
+  }
+
+  const fields = [];
+  const values = [];
+
+  if (updates.full_name !== undefined) {
+    fields.push('full_name = ?');
+    values.push(updates.full_name || null);
+  }
+
+  if (updates.phone !== undefined) {
+    fields.push('phone = ?');
+    values.push(updates.phone || null);
+  }
+
+  if (fields.length === 0) {
+    return getUserById(userId);
+  }
+
+  values.push(userId);
+
+  await db.run(
+    `UPDATE Users SET ${fields.join(', ')} WHERE user_id = ?`,
+    values
+  );
+
+  return getUserById(userId);
+}
+
 module.exports = {
   hashPassword,
   comparePassword,
@@ -228,5 +271,6 @@ module.exports = {
   createUser,
   authenticateUser,
   getUserById,
-  updateUserPreferences
+  updateUserPreferences,
+  updateUserProfile
 };

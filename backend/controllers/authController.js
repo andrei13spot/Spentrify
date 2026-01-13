@@ -152,9 +152,42 @@ async function updatePreferences(req, res, next) {
   }
 }
 
+/**
+ * Update user profile
+ * PUT /api/auth/profile?user_id=xxx
+ * Body: { full_name: string, phone: string }
+ */
+async function updateProfile(req, res, next) {
+  try {
+    const userId = req.query.user_id;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: 'User ID is required'
+      });
+    }
+
+    const { full_name, phone } = req.body;
+
+    const user = await authService.updateUserProfile(userId, {
+      full_name,
+      phone
+    });
+
+    res.json({
+      success: true,
+      data: user
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   login,
   signup,
   getCurrentUser,
-  updatePreferences
+  updatePreferences,
+  updateProfile
 };

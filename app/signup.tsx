@@ -19,7 +19,12 @@ import { useAuth } from "../context/AuthContext";
 
 export default function SignUpScreen() {
   /* ================= AUTH ================= */
-  const { signupWithEmail } = useAuth();
+  const { 
+    signupWithEmail,
+    loginWithGoogle,
+    loginWithFacebook,
+    loginWithApple,
+  } = useAuth();
 
   /* ================= FORM STATE ================= */
   const [fullName, setFullName] = useState("");
@@ -36,6 +41,53 @@ export default function SignUpScreen() {
 
   /* ================= SUCCESS STATE ================= */
   const [showSuccess, setShowSuccess] = useState(false);
+
+  /* ================= SOCIAL LOGIN HANDLERS ================= */
+  
+  const handleGoogleSignup = async () => {
+    if (loading) return;
+    try {
+      setLoading(true);
+      await loginWithGoogle();
+      router.replace("/(tabs)/home");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Google signup failed.";
+      setErrorMessage(message);
+      setShowError(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFacebookSignup = async () => {
+    if (loading) return;
+    try {
+      setLoading(true);
+      await loginWithFacebook();
+      router.replace("/(tabs)/home");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Facebook signup failed.";
+      setErrorMessage(message);
+      setShowError(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAppleSignup = async () => {
+    if (loading) return;
+    try {
+      setLoading(true);
+      await loginWithApple();
+      router.replace("/(tabs)/home");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Apple signup failed.";
+      setErrorMessage(message);
+      setShowError(true);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   /* ================= EMAIL SIGNUP ================= */
   const handleSignup = async () => {
@@ -81,10 +133,13 @@ export default function SignUpScreen() {
        * 🔌 BACKEND READY
        * POST /api/auth/signup
        * Creates user account in database
+       * This saves the user to the database with encrypted email and hashed password
        */
       await signupWithEmail(email, password);
 
       // ✅ SIGNUP SUCCESSFUL → Show success modal
+      // User account is now saved in database
+      // User needs to login with their credentials
       setShowSuccess(true);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Signup failed. Please try again.";
@@ -178,8 +233,9 @@ export default function SignUpScreen() {
             </View>
 
             <TouchableOpacity
-              style={styles.socialButton}
-              onPress={() => router.replace("/(tabs)/home")}
+              style={[styles.socialButton, loading && { opacity: 0.7 }]}
+              onPress={handleGoogleSignup}
+              disabled={loading}
             >
               <Image
                 source={require("../assets/images/logos/GOOGLE.png")}
@@ -189,8 +245,9 @@ export default function SignUpScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.socialButton}
-              onPress={() => router.replace("/(tabs)/home")}
+              style={[styles.socialButton, loading && { opacity: 0.7 }]}
+              onPress={handleFacebookSignup}
+              disabled={loading}
             >
               <Image
                 source={require("../assets/images/logos/FACEABOOK.png")}
@@ -200,8 +257,9 @@ export default function SignUpScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.socialButton}
-              onPress={() => router.replace("/(tabs)/home")}
+              style={[styles.socialButton, loading && { opacity: 0.7 }]}
+              onPress={handleAppleSignup}
+              disabled={loading}
             >
               <Image
                 source={require("../assets/images/logos/APPLE.png")}
@@ -229,8 +287,13 @@ export default function SignUpScreen() {
       {/* ✅ SUCCESS MODAL */}
       <SignupSuccessModal
         visible={showSuccess}
-        onClose={() => setShowSuccess(false)}
+        onClose={() => {
+          setShowSuccess(false);
+          // Redirect to login page after closing modal
+          router.replace("/");
+        }}
       />
+
     </SafeAreaView>
   );
 }

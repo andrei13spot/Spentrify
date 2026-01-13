@@ -1,6 +1,4 @@
 import { Ionicons } from "@expo/vector-icons";
-import * as FileSystem from "expo-file-system";
-import * as Sharing from "expo-sharing";
 import { router } from "expo-router";
 import React, { useState } from "react";
 import {
@@ -14,6 +12,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import CSVExportPreviewModal, { CSVExportData } from "../components/CSVExportPreviewModal";
 import { useAuth } from "../context/AuthContext";
 
 /* ================= THEME ================= */
@@ -48,6 +47,8 @@ const API_BASE_URL = getApiBaseUrl();
 export default function ExportsScreen() {
   const { user } = useAuth();
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [previewVisible, setPreviewVisible] = useState(false);
+  const [previewData, setPreviewData] = useState<CSVExportData | null>(null);
 
   // Date range (default to current year)
   const now = new Date();
@@ -75,33 +76,54 @@ export default function ExportsScreen() {
       }
 
       const csvContent = await response.text();
-      
-      // Save to file system (using expo-file-system)
       const fileName = `Spentrify_ITR_Export_${Date.now()}.csv`;
-      // @ts-ignore - documentDirectory exists at runtime
-      const documentDir = FileSystem.documentDirectory || '';
-      const fileUri = documentDir + fileName;
       
-      await FileSystem.writeAsStringAsync(fileUri, csvContent);
-
-      // Share the file
-      const isAvailable = await Sharing.isAvailableAsync();
-      
-      if (isAvailable) {
-        await Sharing.shareAsync(fileUri, {
-          mimeType: 'text/csv',
-          dialogTitle: 'Share ITR Export',
-        });
-      } else {
+      // Check if CSV is empty
+      if (!csvContent || csvContent.trim().length === 0) {
         Alert.alert(
-          "Export Ready",
-          `ITR export saved as ${fileName}. You can find it in your device storage.`,
+          "No Data",
+          "There are no transactions in the selected date range to export.",
           [{ text: "OK" }]
         );
+        setDownloading(null);
+        return;
       }
+      
+      // Get summary for preview
+      let summary;
+      try {
+        const summaryResponse = await fetch(`${API_BASE_URL}/api/exports/itr/summary?user_id=${user.id}&start_date=${startDate}&end_date=${endDate}`);
+        if (summaryResponse.ok) {
+          const summaryData = await summaryResponse.json();
+          if (summaryData.success && summaryData.data) {
+            summary = {
+              totalAmount: summaryData.data.grandTotal || 0,
+              dateRange: `${new Date(startDate).toLocaleDateString()} - ${new Date(endDate).toLocaleDateString()}`,
+              categoryBreakdown: summaryData.data.categoryTotals?.map((cat: any) => ({
+                category: cat.category,
+                amount: cat.total,
+              })) || [],
+            };
+          }
+        }
+      } catch (summaryError) {
+        console.warn('Could not fetch summary:', summaryError);
+      }
+
+      // Show preview modal instead of directly downloading
+      const exportData: CSVExportData = {
+        title: 'ITR Export Report',
+        type: 'itr',
+        csvContent,
+        fileName,
+        summary,
+      };
+
+      setPreviewData(exportData);
+      setPreviewVisible(true);
     } catch (error) {
-      console.error('Error downloading ITR export:', error);
-      Alert.alert("Error", "Failed to download ITR export. Please try again.");
+      console.error('Error generating ITR export:', error);
+      Alert.alert("Error", "Failed to generate ITR export. Please try again.");
     } finally {
       setDownloading(null);
     }
@@ -123,33 +145,56 @@ export default function ExportsScreen() {
       }
 
       const csvContent = await response.text();
-      
-      // Save to file system
       const fileName = `Spentrify_Reimbursement_Export_${Date.now()}.csv`;
-      // @ts-ignore - documentDirectory exists at runtime
-      const documentDir = FileSystem.documentDirectory || '';
-      const fileUri = documentDir + fileName;
       
-      await FileSystem.writeAsStringAsync(fileUri, csvContent);
-
-      // Share the file
-      const isAvailable = await Sharing.isAvailableAsync();
-      
-      if (isAvailable) {
-        await Sharing.shareAsync(fileUri, {
-          mimeType: 'text/csv',
-          dialogTitle: 'Share Reimbursement Export',
-        });
-      } else {
+      // Check if CSV is empty
+      if (!csvContent || csvContent.trim().length === 0) {
         Alert.alert(
-          "Export Ready",
-          `Reimbursement export saved as ${fileName}. You can find it in your device storage.`,
+          "No Data",
+          "There are no reimbursable transactions in the selected date range to export.",
           [{ text: "OK" }]
         );
+        setDownloading(null);
+        return;
       }
+      
+      // Parse CSV to get summary
+      const lines = csvContent.split('\n').filter(line => line.trim());
+      const dataLines = lines.slice(1); // Skip header
+      let totalAmount = 0;
+      const transactionCount = dataLines.length;
+
+      // Try to calculate total from CSV (assuming amount is in a column)
+      dataLines.forEach(line => {
+        const columns = line.split(',');
+        if (columns.length > 0) {
+          // Try to find amount column (usually one of the last columns)
+          const amountStr = columns[columns.length - 1]?.replace(/"/g, '').trim();
+          const amount = parseFloat(amountStr || '0');
+          if (!isNaN(amount)) {
+            totalAmount += amount;
+          }
+        }
+      });
+
+      // Show preview modal instead of directly downloading
+      const exportData: CSVExportData = {
+        title: 'Reimbursement Export Report',
+        type: 'reimbursement',
+        csvContent,
+        fileName,
+        summary: {
+          totalTransactions: transactionCount,
+          totalAmount,
+          dateRange: `${new Date(startDate).toLocaleDateString()} - ${new Date(endDate).toLocaleDateString()}`,
+        },
+      };
+
+      setPreviewData(exportData);
+      setPreviewVisible(true);
     } catch (error) {
-      console.error('Error downloading reimbursement export:', error);
-      Alert.alert("Error", "Failed to download reimbursement export. Please try again.");
+      console.error('Error generating reimbursement export:', error);
+      Alert.alert("Error", "Failed to generate reimbursement export. Please try again.");
     } finally {
       setDownloading(null);
     }
@@ -243,6 +288,16 @@ export default function ExportsScreen() {
           </Text>
         </View>
       </ScrollView>
+
+      {/* CSV EXPORT PREVIEW MODAL */}
+      <CSVExportPreviewModal
+        visible={previewVisible}
+        exportData={previewData}
+        onClose={() => {
+          setPreviewVisible(false);
+          setPreviewData(null);
+        }}
+      />
     </SafeAreaView>
   );
 }

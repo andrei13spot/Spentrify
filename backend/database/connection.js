@@ -116,6 +116,24 @@ async function initDb() {
         console.log('✓ Users table created');
       });
 
+      // Add new columns to Users table if they don't exist (migration)
+      // This allows existing databases to be updated without losing data
+      db.run(`ALTER TABLE Users ADD COLUMN full_name TEXT`, (err) => {
+        if (err && !err.message.includes('duplicate column name')) {
+          console.warn('warning: could not add full_name column:', err.message);
+        }
+      });
+      db.run(`ALTER TABLE Users ADD COLUMN phone TEXT`, (err) => {
+        if (err && !err.message.includes('duplicate column name')) {
+          console.warn('warning: could not add phone column:', err.message);
+        }
+      });
+      db.run(`ALTER TABLE Users ADD COLUMN is_email_verified INTEGER DEFAULT 0`, (err) => {
+        if (err && !err.message.includes('duplicate column name')) {
+          console.warn('warning: could not add is_email_verified column:', err.message);
+        }
+      });
+
       // TABLE 2: Categories - spending categories like Food, Transport, etc.
       // category_name: must be unique (can't have two "Food" categories)
       // is_itr_deductible: 1 if it counts for tax deductions, 0 if not

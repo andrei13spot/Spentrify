@@ -43,7 +43,7 @@ async function getTransactionById(req, res, next) {
 async function createTransaction(req, res, next) {
   try {
     // Accept both 'description' (for backward compatibility) and 'merchant_name' (correct field)
-    const { user_id, amount, description, merchant_name, transaction_date, category_id } = req.body;
+    const { user_id, amount, description, merchant_name, transaction_date, category_id, is_reimbursable } = req.body;
     
     // Input validation
     if (!user_id || amount === undefined || !transaction_date) {
@@ -68,7 +68,9 @@ async function createTransaction(req, res, next) {
       amount,
       merchant_name: merchantName,
       transaction_date,
-      category_id: category_id || null
+      category_id: category_id || null,
+      is_manual: true, // All transactions from the app are manual
+      is_reimbursable: is_reimbursable ? true : false
     });
     
     res.status(201).json({
@@ -89,7 +91,7 @@ async function updateTransaction(req, res, next) {
   try {
     const { id } = req.params;
     // Accept both 'description' (for backward compatibility) and 'merchant_name' (correct field)
-    const { amount, description, merchant_name, category_id, transaction_date } = req.body;
+    const { amount, description, merchant_name, category_id, transaction_date, is_reimbursable } = req.body;
     // TODO: Extract user_id from authentication token
     const userId = req.query.user_id || 'default_user';
     
@@ -108,7 +110,8 @@ async function updateTransaction(req, res, next) {
       amount,
       merchant_name: merchantName,
       category_id,
-      transaction_date
+      transaction_date,
+      is_reimbursable: is_reimbursable !== undefined ? (is_reimbursable ? true : false) : undefined
     });
     
     if (!transaction) {
