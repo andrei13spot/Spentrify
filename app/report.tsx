@@ -9,6 +9,7 @@ import {
   View,
 } from "react-native";
 import Svg, { Circle } from "react-native-svg";
+import ReportPreviewModal, { ReportData } from "../components/ReportPreviewModal";
 import { useData } from "../context/DataContext";
 
 /* ================= THEME ================= */
@@ -96,6 +97,8 @@ export default function ReportScreen() {
   );
 
   const [reports, setReports] = useState<number[]>([]);
+  const [previewVisible, setPreviewVisible] = useState(false);
+  const [currentReport, setCurrentReport] = useState<ReportData | null>(null);
 
   if (!transaction) {
     return (
@@ -107,9 +110,26 @@ export default function ReportScreen() {
     );
   }
 
-  const remaining = Math.max(0, transaction.amount - transaction.amount);
+  const spent = transaction.spent || 0;
+  const remaining = Math.max(0, transaction.amount - spent);
+  const percentageUsed = transaction.amount > 0 ? (spent / transaction.amount) * 100 : 0;
 
   const handleGenerateReport = () => {
+    // Create report data
+    const reportData: ReportData = {
+      title: `Financial Report: ${transaction.name}`,
+      budgetName: transaction.name,
+      budget: transaction.amount,
+      spent: spent,
+      remaining: remaining,
+      percentageUsed: percentageUsed,
+      createdAt: transaction.createdAt,
+      description: `This report shows the financial summary for ${transaction.name}. You have spent ${percentageUsed.toFixed(1)}% of your budget, with ₱${remaining.toLocaleString()} remaining.`,
+    };
+
+    setCurrentReport(reportData);
+    setPreviewVisible(true);
+    // Also add to reports list for history
     setReports((prev) => [...prev, Date.now()]);
   };
 
@@ -138,14 +158,14 @@ export default function ReportScreen() {
           </Text>
 
           <ProgressDonut
-            spent={transaction.amount}
+            spent={spent}
             budget={transaction.amount}
           />
 
           {/* SUMMARY */}
           <View style={styles.summary}>
             <Row label="Budget" value={peso(transaction.amount)} />
-            <Row label="Spent" value={peso(transaction.amount)} />
+            <Row label="Spent" value={peso(spent)} />
             <Row label="Remaining" value={peso(remaining)} />
           </View>
 
@@ -183,6 +203,13 @@ export default function ReportScreen() {
           </Text>
         </View>
       </ScrollView>
+
+      {/* REPORT PREVIEW MODAL */}
+      <ReportPreviewModal
+        visible={previewVisible}
+        reportData={currentReport}
+        onClose={() => setPreviewVisible(false)}
+      />
     </View>
   );
 }

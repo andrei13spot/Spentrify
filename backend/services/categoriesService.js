@@ -84,55 +84,132 @@ async function parseNotification(rawText, userId) {
 
 /**
  * STANDARD OPERATIONS
+ * Get all categories
+ * @returns {Promise<Array>} Array of category objects
  */
+
 async function getAllCategories() {
-  // Gumagamit ng Category_name dahil ito ang nasa connection.js mo
-  return await db.query('SELECT * FROM Categories ORDER BY category_name ASC');
+  const rows = await db.query(
+    'SELECT category_id, category_name, is_itr_deductible, icon_identifier, created_at FROM Categories ORDER BY category_name ASC',
+    []
+  );
+  return rows.map(row => ({
+    category_id: row.category_id,
+    category_name: row.category_name,
+    is_itr_deductible: row.is_itr_deductible === 1,
+    icon_identifier: row.icon_identifier,
+    created_at: row.created_at
+  }));
 }
+/*
+ * Get a single category by ID
+ * @param {number} id - Category ID
+ * @returns {Promise<Object|null>} Category object or null
+*/
 
 async function getCategoryById(id) {
-  const rows = await db.query('SELECT * FROM Categories WHERE category_id = ?', [id]);
-  return rows[0] || null;
+  const rows = await db.query(
+    'SELECT category_id, category_name, is_itr_deductible, icon_identifier, created_at FROM Categories WHERE category_id = ? LIMIT 1',
+    [id]
+  );
+  
+  if (rows.length === 0) {
+    return null;
 }
+
+  const row = rows[0];
+  return {
+    category_id: row.category_id,
+    category_name: row.category_name,
+    is_itr_deductible: row.is_itr_deductible === 1,
+    icon_identifier: row.icon_identifier,
+    created_at: row.created_at
+  };
+}
+/*
+ * Create a new category
+ * @param {Object} categoryData - Category data
+ * @param {string} categoryData.category_name - Category name
+ * @param {boolean} categoryData.is_itr_deductible - Whether category is ITR deductible
+ * @param {string} categoryData.icon_identifier - Icon identifier (optional)
+ * @returns {Promise<Object>} Created category object
+*/
 
 async function createCategory(categoryData) {
   const result = await db.run(
-    'INSERT INTO Categories (category_name, is_itr_deductible) VALUES (?, ?)',
-    [categoryData.name, categoryData.is_itr_deductible || 0]
+    `INSERT INTO Categories (category_name, is_itr_deductible, icon_identifier)
+    VALUES (?, ?, ?)`,
+    [
+      categoryData.category_name,
+      categoryData.is_itr_deductible ? 1 : 0,
+      categoryData.icon_identifier || null
+    ]
   );
   
   return {
     category_id: result.lastID,
-    ...categoryData,
+    category_name: categoryData.category_name,
+    is_itr_deductible: categoryData.is_itr_deductible,
+    icon_identifier: categoryData.icon_identifier || null,
     created_at: new Date().toISOString()
   };
 }
+/**
+ * Update a category
+ * @param {number} id - Category ID
+ * @param {Object} updates - Fields to update
+ * @returns {Promise<Object|null>} Updated category object or null
+ */
 
 async function updateCategory(id, updates) {
   const fields = [];
   const values = [];
   
-  if (updates.name !== undefined) {
+  if (updates.category_name !== undefined) {
     fields.push('category_name = ?');
-    values.push(updates.name);
+    values.push(updates.category_name);
   }
   
   if (updates.is_itr_deductible !== undefined) {
     fields.push('is_itr_deductible = ?');
-    values.push(updates.is_itr_deductible);
+    values.push(updates.is_itr_deductible ? 1 : 0);
+  }
+
+    if (updates.icon_identifier !== undefined) {
+    fields.push('icon_identifier = ?');
+    values.push(updates.icon_identifier || null);
   }
   
-  if (fields.length === 0) return await getCategoryById(id);
+  if (fields.length === 0) {
+    return getCategoryById(id);
+  }
   
   values.push(id);
-  const sql = `UPDATE Categories SET ${fields.join(', ')} WHERE category_id = ?`;
+  const result = await db.run(
+    `UPDATE Categories
+    SET ${fields.join(', ')}
+    WHERE category_id = ?`,
+    values
+  );
   
-  const result = await db.run(sql, values);
-  return result.changes > 0 ? await getCategoryById(id) : null;
+  if (result.changes === 0) {
+    return null;
+  }
+  
+  return getCategoryById(id);
 }
 
+/**
+ * Delete a category
+ * @param {number} id - Category ID
+ * @returns {Promise<boolean>} True if deleted, false if not found
+ */
+
 async function deleteCategory(id) {
-  const result = await db.run('DELETE FROM Categories WHERE category_id = ?', [id]);
+  const result = await db.run(
+    'DELETE FROM Categories WHERE category_id = ?',
+    [id]
+  );
   return result.changes > 0;
 }
 

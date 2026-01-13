@@ -2,8 +2,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import React, { useMemo } from "react";
 import {
+  ActivityIndicator,
   FlatList,
   Pressable,
+  RefreshControl,
   StyleSheet,
   Text,
   View,
@@ -210,7 +212,7 @@ function RealtimeTransactionCard({
 /* ================= SCREEN ================= */
 
 export default function HomeScreen() {
-  const { transactions } = useData();
+  const { transactions, allTransactions, loading, refreshData } = useData();
 
   /**
    * BACKEND-READY DERIVATION
@@ -249,23 +251,22 @@ export default function HomeScreen() {
 
 
   /**
-   * Monthly total — backend-ready
-   * Can later be replaced by API-sent aggregate
+   * Monthly total — calculated from all transactions this month
+   * Sums all spending transactions for the current month
    */
   const monthlyTotal = useMemo(() => {
-    return transactions.reduce((sum, t) => {
-      if (typeof t.spent === "number") return sum + t.spent;
-
-      const expenses = t.expenses ?? [];
-      return (
-        sum +
-        expenses.reduce(
-          (s: number, e: { amount: number }) => s + e.amount,
-          0
-        )
-      );
+    const now = new Date();
+    const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    
+    // Sum all transactions from the current month
+    return allTransactions.reduce((sum, tx) => {
+      const txDate = new Date(tx.transaction_date || tx.created_at);
+      if (txDate >= firstDayOfMonth) {
+        return sum + (tx.amount || 0);
+      }
+      return sum;
     }, 0);
-  }, [transactions]);
+  }, [allTransactions]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -280,10 +281,11 @@ export default function HomeScreen() {
         </Pressable>
       </View>
 
-      {chartData.length === 0 ? (
+      {loading && chartData.length === 0 ? (
         <View style={styles.emptyState}>
-          <Text style={styles.emptyText}>
-            No transactions yet. Tap + to add one.
+          <ActivityIndicator size="large" color={THEME.primary} />
+          <Text style={[styles.emptyText, { marginTop: 16 }]}>
+            Loading your spending data...
           </Text>
         </View>
       ) : (
@@ -292,11 +294,25 @@ export default function HomeScreen() {
           keyExtractor={(item) => item.id}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.listContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={loading}
+              onRefresh={refreshData}
+              tintColor={THEME.primary}
+            />
+          }
           ListHeaderComponent={
             <>
               <MonthlySummaryCard total={monthlyTotal} />
-              <View style={styles.divider} />
+              {chartData.length > 0 && <View style={styles.divider} />}
             </>
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyText}>
+                No budgets yet. Create a budget to start tracking your spending!
+              </Text>
+            </View>
           }
           renderItem={({ item }) => (
             <RealtimeTransactionCard item={item} />

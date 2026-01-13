@@ -5,6 +5,7 @@ import {
   FlatList,
   Modal,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -78,6 +79,7 @@ export default function AddTransaction() {
   const [amount, setAmount] = useState("");
   const [details, setDetails] = useState("");
   const [category, setCategory] = useState("Select Category");
+  const [isReimbursable, setIsReimbursable] = useState(false);
   
   // Set default date to today for better UX
   const today = new Date();
@@ -90,9 +92,9 @@ export default function AddTransaction() {
   const [loading, setLoading] = useState(false); // Add loading state
 
   /* ================= TEMP DATE INPUTS ================= */
-  const [tempMonth, setTempMonth] = useState(String(today.getMonth() + 1).padStart(2, '0'));
-  const [tempDay, setTempDay] = useState(String(today.getDate()).padStart(2, '0'));
-  const [tempYear, setTempYear] = useState(String(today.getFullYear()));
+  const [tempMonth, setTempMonth] = useState("01");
+  const [tempDay, setTempDay] = useState("01");
+  const [tempYear, setTempYear] = useState("2026");
 
   /* ================= RESET ================= */
 
@@ -100,10 +102,13 @@ export default function AddTransaction() {
     setAmount("");
     setDetails("");
     setCategory("Select Category");
-    setDate(defaultDateStr);
+    setDate("01/01/2026");
+    setTempMonth("01");
+    setTempDay("01");
+    setTempYear("2026");
   };
 
-  /* ================= CONFIRM (BACKEND INTEGRATED) ================= */
+  /* ================= CONFIRM  ================= */
 
   const handleConfirmTransaction = async () => {
     // 1. Validation
@@ -178,6 +183,7 @@ export default function AddTransaction() {
             createdAt: now.toISOString(),
             spent: 0,
             expenses: [],
+            isReimbursable: isReimbursable,
         };
 
         addTransaction(newTransaction);
@@ -205,9 +211,7 @@ export default function AddTransaction() {
 
   const confirmDate = () => {
     // Pad with zeros for consistency
-    const m = tempMonth.padStart(2, '0');
-    const d = tempDay.padStart(2, '0');
-    setDate(`${m}/${d}/${tempYear}`);
+    setDate(`${tempMonth}/${tempDay}/${tempYear}`);
     setShowDatePicker(false);
   };
 
@@ -272,14 +276,32 @@ export default function AddTransaction() {
           </TouchableOpacity>
         </View>
 
+        {/* REIMBURSABLE TOGGLE (UC-7) */}
+        {!isGoal && (
+          <View style={styles.reimbursableRow}>
+            <View style={styles.reimbursableLabelContainer}>
+              <Ionicons name="receipt-outline" size={20} color="#3B82F6" />
+              <Text style={styles.reimbursableLabel}>
+                Mark as Reimbursable
+              </Text>
+            </View>
+            <Switch
+              value={isReimbursable}
+              onValueChange={setIsReimbursable}
+              trackColor={{ false: "#D1D5DB", true: "#3B82F6" }}
+              thumbColor="#FFFFFF"
+            />
+          </View>
+        )}
+
         {/* CONFIRM */}
         <TouchableOpacity
-          style={[styles.confirmButton, { opacity: loading ? 0.7 : 1 }]}
+          style={styles.confirmButton}
           onPress={handleConfirmTransaction}
           disabled={loading}
         >
           <Text style={styles.confirmText}>
-            {loading ? "Saving..." : (isGoal ? "Confirm Goal" : "Confirm Transaction")}
+            {isGoal ? "Confirm Goal" : "Confirm Transaction"}
           </Text>
         </TouchableOpacity>
 
@@ -458,5 +480,26 @@ const styles = StyleSheet.create({
     padding: 12,
     width: "30%",
     textAlign: "center",
+  },
+  reimbursableRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    marginBottom: 16,
+    backgroundColor: "#F9FAFB",
+    borderRadius: 12,
+    padding: 14,
+  },
+  reimbursableLabelContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  reimbursableLabel: {
+    fontSize: 14,
+    color: "#374151",
+    fontWeight: "500",
   },
 });

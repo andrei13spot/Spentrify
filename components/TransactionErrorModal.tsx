@@ -29,7 +29,7 @@ export default function TransactionErrorModal({
         <View style={styles.card}>
           {/* Icon */}
           <View style={styles.iconCircle}>
-            <Ionicons name="alert" size={36} color="#3B82F6" />
+            <Ionicons name="alert-circle" size={36} color="#EF4444" />
           </View>
 
           {/* Text */}
@@ -73,7 +73,7 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: "#E0EDFF",
+    backgroundColor: "#FEE2E2",
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 16,

@@ -40,7 +40,7 @@ async function detectTransaction(req, res, next) {
  */
 async function getAllTransactions(req, res, next) {
   try {
-    const userId = 1;
+    const userId = req.query.user_id || 'default_user';
     const transactions = await transactionService.getAllTransactions(userId);
     
     res.json({
@@ -107,8 +107,17 @@ async function createTransaction(req, res, next) {
       transaction_date: req.body.transaction_date || new Date().toISOString(),
       source_type: req.body.source_type || 'Digital', 
       reference_number: req.body.reference_number || null,
-      is_manual: req.body.is_manual || 0
+      is_manual: req.body.is_manual || 0,
+      is_reimbursable: req.body.is_reimbursable ? true : false
     };
+    // Input validation
+    if (typeof cleanData.amount !== 'number' || cleanData.amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'Amount must be a positive number' }
+      });
+    }
+    
 
     // 3. Save Transaction
     const transaction = await transactionService.createTransaction(cleanData);
@@ -146,8 +155,8 @@ async function createTransaction(req, res, next) {
 async function updateTransaction(req, res, next) {
   try {
     const { id } = req.params;
-    const { amount, description, category_id, transaction_date } = req.body;
-    const userId = req.query.user_id || 1;
+    const { amount, description, merchant_name, category_id, transaction_date, is_reimbursable } = req.body;
+    const userId = req.query.user_id || 'default_user';
     
     if (amount !== undefined && (typeof amount !== 'number' || amount <= 0)) {
       return res.status(400).json({
@@ -159,8 +168,10 @@ async function updateTransaction(req, res, next) {
     const transaction = await transactionService.updateTransaction(id, userId, {
       amount,
       description,
+      merchant_name,
       category_id,
-      transaction_date
+      transaction_date,
+      is_reimbursable
     });
     
     if (!transaction) {

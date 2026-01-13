@@ -1,7 +1,4 @@
-// simple service for working with transactions
-// Updated for Spentrify V2 Schema (Categories, Merchant Names, Manual Entry)
 
-// Note: Gumagamit tayo ng destructuring para makuha ang query/run helpers
 const { query, run } = require('../database/connection');
 const encryptionService = require('./encryption');
 
