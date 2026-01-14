@@ -14,6 +14,7 @@
     },
 
     "android": {
+      
       "package": "com.hans.spentrify",
 
       "adaptiveIcon": {
@@ -22,6 +23,9 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
+      "permissions": [
+        "READ_SMS",
+        "RECEIVE_SMS"],
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
