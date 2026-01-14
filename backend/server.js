@@ -15,6 +15,8 @@ const categoriesRoutes = require('./routes/categories');
 const budgetsRoutes = require('./routes/budgets');
 const notificationsRoutes = require('./routes/notifications');
 const exportsRoutes = require('./routes/exports');
+const analyticsRoutes = require('./routes/analytics');
+const insightsRoutes = require('./routes/insights');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -41,6 +43,12 @@ app.use('/api/categories', categoriesRoutes); // ADDED: Enable Categories endpoi
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/budgets', budgetsRoutes);
 app.use('/api/goals', budgetsRoutes);
+
+// analytics API (UC-4: Spending Dashboard)
+app.use('/api/analytics', analyticsRoutes);
+
+// insights API (UC-3: Auto-Audit & Habit Analysis)
+app.use('/api/insights', insightsRoutes);
 
 // exports API (UC-6: ITR Support, UC-7: Reimbursement Mode)
 app.use('/api/exports', exportsRoutes);

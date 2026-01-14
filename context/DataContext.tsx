@@ -112,8 +112,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     try {
       setLoading(true);
 
+      // Note: budgets = goals (same thing, both endpoints use the same routes)
       const [budgetsRes, txRes, categoriesRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/api/budgets?user_id=${user.id}`),
+        fetch(`${API_BASE_URL}/api/budgets?user_id=${user.id}`), // Also accessible via /api/goals
         fetch(`${API_BASE_URL}/api/transactions?user_id=${user.id}`),
         fetch(`${API_BASE_URL}/api/categories`),
       ]);

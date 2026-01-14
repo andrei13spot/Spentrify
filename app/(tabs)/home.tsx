@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -9,10 +9,12 @@ import {
   StyleSheet,
   Text,
   View,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Circle, Polyline } from "react-native-svg";
 import { useData } from "../../context/DataContext";
+import { useAuth } from "../../context/AuthContext";
 
 const THEME = {
   primary: "#3B82F6",
@@ -31,21 +33,83 @@ function clamp01(x: number) {
   return Math.max(0, Math.min(1, x));
 }
 
+function getApiBaseUrl(): string {
+  if (process.env.EXPO_PUBLIC_API_URL) {
+    return process.env.EXPO_PUBLIC_API_URL;
+  }
+  if (Platform.OS === "android") {
+    return "http://10.0.2.2:3000";
+  }
+  return "http://localhost:3000";
+}
+
+const API_BASE_URL = getApiBaseUrl();
+
+// Category colors for donut chart
+const CATEGORY_COLORS = [
+  "#3B82F6", // Blue
+  "#22C55E", // Green
+  "#A855F7", // Purple
+  "#F59E0B", // Orange
+  "#EF4444", // Red
+  "#06B6D4", // Cyan
+  "#8B5CF6", // Violet
+  "#EC4899", // Pink
+];
+
+/* ================= AI INSIGHT CARD ================= */
+
+function AIInsightCard({ insight }: { insight: { message: string; type: string } | null }) {
+  if (!insight) return null;
+
+  const isWarning = insight.type === 'Overspending' || insight.type === 'Category Alert';
+  
+  return (
+    <View style={[styles.insightCard, isWarning && styles.insightCardWarning]}>
+      <View style={styles.insightHeader}>
+        <Ionicons 
+          name={isWarning ? "alert-circle" : "bulb"} 
+          size={18} 
+          color={isWarning ? "#F59E0B" : "#3B82F6"} 
+        />
+        <Text style={styles.insightTitle}>
+          {isWarning ? "Spending Alert" : "AI Insight"}
+        </Text>
+      </View>
+      <Text style={styles.insightMessage}>{insight.message}</Text>
+    </View>
+  );
+}
+
 /* ================= MONTHLY SUMMARY ================= */
 
-function MonthlySummaryCard({ total }: { total: number }) {
+function MonthlySummaryCard({ 
+  total, 
+  categoryBreakdown 
+}: { 
+  total: number;
+  categoryBreakdown: Array<{ category_name: string; total: number; percentage: number; icon?: string }>;
+}) {
   const size = 180;
   const stroke = 16;
   const r = (size - stroke) / 2;
   const cx = size / 2;
   const cy = size / 2;
 
-  const segments = [
-    { color: "#3B82F6", value: 0.35 },
-    { color: "#22C55E", value: 0.3 },
-    { color: "#A855F7", value: 0.2 },
-    { color: "#F59E0B", value: 0.15 },
-  ];
+  // Create segments from real category data
+  const segments = useMemo(() => {
+    if (!categoryBreakdown || categoryBreakdown.length === 0) {
+      // Fallback to empty state
+      return [];
+    }
+    
+    return categoryBreakdown.slice(0, 5).map((cat, i) => ({
+      color: CATEGORY_COLORS[i % CATEGORY_COLORS.length],
+      value: cat.percentage / 100,
+      name: cat.category_name,
+      amount: cat.total
+    }));
+  }, [categoryBreakdown]);
 
   let startAngle = -90;
 
@@ -54,31 +118,50 @@ function MonthlySummaryCard({ total }: { total: number }) {
       <Text style={styles.summaryLabel}>TOTAL THIS MONTH</Text>
       <Text style={styles.summaryValue}>{peso(total)}</Text>
 
-      <Svg width={size} height={size}>
-        {segments.map((seg, i) => {
-          const length = 2 * Math.PI * r * seg.value;
-          const dashArray = `${length} ${2 * Math.PI * r}`;
-          const rotation = startAngle;
-          startAngle += seg.value * 360;
+      {segments.length > 0 ? (
+        <>
+          <Svg width={size} height={size}>
+            {segments.map((seg, i) => {
+              const length = 2 * Math.PI * r * seg.value;
+              const dashArray = `${length} ${2 * Math.PI * r}`;
+              const rotation = startAngle;
+              startAngle += seg.value * 360;
 
-          return (
-            <Circle
-              key={i}
-              cx={cx}
-              cy={cy}
-              r={r}
-              stroke={seg.color}
-              strokeWidth={stroke}
-              strokeDasharray={dashArray}
-              strokeLinecap="round"
-              rotation={rotation}
-              originX={cx}
-              originY={cy}
-              fill="none"
-            />
-          );
-        })}
-      </Svg>
+              return (
+                <Circle
+                  key={i}
+                  cx={cx}
+                  cy={cy}
+                  r={r}
+                  stroke={seg.color}
+                  strokeWidth={stroke}
+                  strokeDasharray={dashArray}
+                  strokeLinecap="round"
+                  rotation={rotation}
+                  originX={cx}
+                  originY={cy}
+                  fill="none"
+                />
+              );
+            })}
+          </Svg>
+          {/* Category legend */}
+          <View style={styles.legend}>
+            {segments.map((seg, i) => (
+              <View key={i} style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: seg.color }]} />
+                <Text style={styles.legendText}>
+                  {seg.name}: {peso(seg.amount)}
+                </Text>
+              </View>
+            ))}
+          </View>
+        </>
+      ) : (
+        <View style={styles.emptyChart}>
+          <Text style={styles.emptyChartText}>No spending data yet</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -213,6 +296,10 @@ function RealtimeTransactionCard({
 
 export default function HomeScreen() {
   const { transactions, allTransactions, loading, refreshData } = useData();
+  const { user } = useAuth();
+  const [categoryBreakdown, setCategoryBreakdown] = useState<any[]>([]);
+  const [aiInsight, setAiInsight] = useState<{ message: string; type: string } | null>(null);
+  const [loadingAnalytics, setLoadingAnalytics] = useState(false);
 
   /**
    * BACKEND-READY DERIVATION
@@ -268,10 +355,59 @@ export default function HomeScreen() {
     }, 0);
   }, [allTransactions]);
 
+  // Fetch category breakdown and AI insights
+  useEffect(() => {
+    const fetchAnalytics = async () => {
+      if (!user?.id) return;
+      
+      try {
+        setLoadingAnalytics(true);
+        
+        // Fetch category breakdown
+        const categoryRes = await fetch(
+          `${API_BASE_URL}/api/analytics/by-category?user_id=${user.id}`
+        );
+        const categoryData = await categoryRes.json();
+        if (categoryData.success) {
+          setCategoryBreakdown(categoryData.data || []);
+        }
+        
+        // Fetch top AI insight
+        const insightsRes = await fetch(
+          `${API_BASE_URL}/api/insights?user_id=${user.id}&limit=1`
+        );
+        const insightsData = await insightsRes.json();
+        if (insightsData.success && insightsData.data.length > 0) {
+          setAiInsight({
+            message: insightsData.data[0].message,
+            type: insightsData.data[0].type
+          });
+        }
+      } catch (error) {
+        console.error('Failed to fetch analytics:', error);
+      } finally {
+        setLoadingAnalytics(false);
+      }
+    };
+    
+    fetchAnalytics();
+  }, [user?.id, allTransactions.length]);
+
+  // Get user's first name from email or use default
+  const userName = useMemo(() => {
+    if (user?.email) {
+      return user.email.split('@')[0].split('.')[0];
+    }
+    return 'User';
+  }, [user]);
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Your Spending</Text>
+        <View>
+          <Text style={styles.headerTitle}>Your Spending</Text>
+          <Text style={styles.welcomeText}>Welcome back, {userName}</Text>
+        </View>
 
         <Pressable
           onPress={() => router.push("/notifications")}
@@ -303,7 +439,16 @@ export default function HomeScreen() {
           }
           ListHeaderComponent={
             <>
-              <MonthlySummaryCard total={monthlyTotal} />
+              <MonthlySummaryCard 
+                total={monthlyTotal} 
+                categoryBreakdown={categoryBreakdown}
+              />
+              {aiInsight && (
+                <>
+                  <View style={styles.divider} />
+                  <AIInsightCard insight={aiInsight} />
+                </>
+              )}
               {chartData.length > 0 && <View style={styles.divider} />}
             </>
           }
@@ -345,6 +490,11 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "700",
     color: THEME.text,
+  },
+  welcomeText: {
+    fontSize: 13,
+    color: THEME.sub,
+    marginTop: 2,
   },
   headerIcon: {
     width: 36,
@@ -462,5 +612,64 @@ const styles = StyleSheet.create({
   emptyText: {
     color: THEME.sub,
     fontSize: 14,
+  },
+  
+  insightCard: {
+    backgroundColor: "#EFF6FF",
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#DBEAFE",
+  },
+  insightCardWarning: {
+    backgroundColor: "#FEF3C7",
+    borderColor: "#FDE68A",
+  },
+  insightHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  insightTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: THEME.text,
+    marginLeft: 8,
+  },
+  insightMessage: {
+    fontSize: 13,
+    color: THEME.sub,
+    lineHeight: 18,
+  },
+  
+  legend: {
+    marginTop: 12,
+    width: "100%",
+  },
+  legendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+  legendDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginRight: 8,
+  },
+  legendText: {
+    fontSize: 11,
+    color: THEME.sub,
+  },
+  
+  emptyChart: {
+    height: 180,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  emptyChartText: {
+    fontSize: 12,
+    color: THEME.sub,
   },
 });
