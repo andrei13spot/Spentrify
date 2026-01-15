@@ -1,12 +1,10 @@
 /**
  * Transactions Controller
- * Handles HTTP requests for transaction operations.
  */
 
 const transactionService = require('../services/transactionsService');
 const categoriesService = require('../services/categoriesService');
 const notificationsService = require('../services/notificationsService');
-// Import database helper directly for the fix
 const { run } = require('../database/connection'); 
 
 /**
@@ -17,13 +15,11 @@ async function detectTransaction(req, res, next) {
     const { raw_text, user_id } = req.body;
 
     if (!raw_text) {
-      return res.status(400).json({ 
-        success: false, 
-        error: { message: 'Missing raw_text field' } 
-      });
+      return res.status(400).json({ success: false, error: { message: 'Missing raw_text field' } });
     }
 
-    const detectedData = await categoriesService.parseNotification(raw_text, user_id || 'default_user');
+   
+    const detectedData = await categoriesService.parseNotification(raw_text, user_id || 1);
 
     res.json({
       success: true,
@@ -40,9 +36,12 @@ async function detectTransaction(req, res, next) {
  */
 async function getAllTransactions(req, res, next) {
   try {
-    const userId = req.query.user_id || 'default_user';
-    const transactions = await transactionService.getAllTransactions(userId);
-    
+    const { user_id } = req.query;
+    if (!user_id) {
+      return res.status(400).json({ success: false, error: 'User ID is required' });
+    }
+
+    const transactions = await transactionService.getAllTransactions(user_id);
     res.json({
       success: true,
       data: transactions,
@@ -59,84 +58,86 @@ async function getAllTransactions(req, res, next) {
 async function getTransactionById(req, res, next) {
   try {
     const { id } = req.params;
-    const userId = req.query.user_id || 'default_user';
-    
-    const transaction = await transactionService.getTransactionById(id, userId);
-    
-    if (!transaction) {
-      return res.status(404).json({
-        success: false,
-        error: { message: 'Transaction not found' }
-      });
+    const { user_id } = req.query;
+
+    if (!user_id) {
+      return res.status(400).json({ success: false, error: 'User ID is required' });
     }
     
-    res.json({
-      success: true,
-      data: transaction
-    });
+    const transaction = await transactionService.getTransactionById(id, user_id);
+    
+    if (!transaction) {
+      return res.status(404).json({ success: false, error: { message: 'Transaction not found' } });
+    }
+    
+    res.json({ success: true, data: transaction });
   } catch (error) {
     next(error);
   }
 }
 
 /**
- * Create Transaction (Manual / Pop-up Confirm)
- * FIXED: Auto-creates User & Category to prevent DB Crashes
+ * Create Transaction
+
  */
 async function createTransaction(req, res, next) {
   try {
-    // 1. Setup Defaults
-    const userId = 1; // Force User 1 for now
-    const catId = req.body.category_id || 13; // Default to 'Others' (13) if null
-
-    // 2. --- SAFETY CHECK (THE FIX) ---
-    // Ensure User 1 exists in DB
-    await run(`INSERT OR IGNORE INTO Users (user_id, email_encrypted, passcode_hash) VALUES (1, 'default_user_enc', 'pass123')`);
+    const { user_id } = req.body; 
     
-    // Ensure the chosen Category exists in DB (Avoids Foreign Key Error)
-    // We insert a generic placeholder if it doesn't exist yet
-    await run(`INSERT OR IGNORE INTO Categories (category_id, category_name, is_itr_deductible) VALUES (?, 'System Category', 0)`, [catId]);
-    // -----------------------------
+    // 👇 1. SAFETY NET (THE FIX)
 
+    let finalUserId = Number(user_id);
+
+    if (isNaN(finalUserId)) {
+        console.log(`Warning: Invalid user_id received ("${user_id}"). Auto-fixing to ID 1.`);
+        finalUserId = 1;
+    }
+
+    // Double check kung may ID na
+    if (!finalUserId) {
+        return res.status(400).json({ success: false, error: 'User ID is required to save transaction.' });
+    }
+
+    const catId = req.body.category_id || 13; // Default to 'Others'
+
+    // 2. Ensure User Exists (Gamitin ang finalUserId)
+    await run(`INSERT OR IGNORE INTO Users (user_id, email_encrypted, passcode_hash) VALUES (?, 'default_email', 'pass123')`, [finalUserId]);
+    
+    // 3. Ensure Category Exists
+    await run(`INSERT OR IGNORE INTO Categories (category_id, category_name, is_itr_deductible) VALUES (?, 'System Category', 0)`, [catId]);
+
+    // 4. Clean Data
     const cleanData = {
-      user_id: userId,
-      category_id: catId,
-      amount: req.body.amount,
+      user_id: finalUserId, 
+      category_id: Number(catId),
+      amount: Number(req.body.amount),
       merchant_name: req.body.merchant || req.body.merchant_name || 'General Merchant',
       description: req.body.description || req.body.merchant || 'Manual Transaction',
       transaction_date: req.body.transaction_date || new Date().toISOString(),
       source_type: req.body.source_type || 'Digital', 
       reference_number: req.body.reference_number || null,
-      is_manual: req.body.is_manual || 0,
-      is_reimbursable: req.body.is_reimbursable ? true : false
+      is_manual: req.body.is_manual ? 1 : 0,       // Convert true -> 1
+      is_reimbursable: req.body.is_reimbursable ? 1 : 0 // Convert true -> 1
     };
-    // Input validation
-    if (typeof cleanData.amount !== 'number' || cleanData.amount <= 0) {
-      return res.status(400).json({
-        success: false,
-        error: { message: 'Amount must be a positive number' }
-      });
-    }
-    
 
-    // 3. Save Transaction
+    if (typeof cleanData.amount !== 'number' || cleanData.amount <= 0) {
+      return res.status(400).json({ success: false, error: { message: 'Amount must be a positive number' } });
+    }
+
+    // 5. Save to Database
     const transaction = await transactionService.createTransaction(cleanData);
 
-    console.log("SUCCESS: Transaction Saved!");
-    console.log("Amount:", cleanData.amount);
+    console.log(`SUCCESS: Transaction Saved for User ${finalUserId}!`);
 
-    // 4. Trigger Notification (Fire and Forget)
+    // 6. Trigger Notification
     try {
       const notifTitle = "Transaction Confirmed";
-      const notifMessage = `PHP ${cleanData.amount} • ${req.body.description || 'Expense'}`;
-      
-      await notificationsService.createNotification(userId, notifTitle, notifMessage);
-      console.log("Notification created");
+      const notifMessage = `PHP ${cleanData.amount} • ${cleanData.description}`;
+      await notificationsService.createNotification(finalUserId, notifTitle, notifMessage);
     } catch (notifError) {
       console.error("Notification Error (Ignored):", notifError);
     }
 
-    // 5. Send Response
     res.status(201).json({
       success: true,
       data: transaction,
@@ -150,22 +151,24 @@ async function createTransaction(req, res, next) {
 }
 
 /**
- * Update an existing transaction
+ * Update Transaction
  */
 async function updateTransaction(req, res, next) {
   try {
     const { id } = req.params;
-    const { amount, description, merchant_name, category_id, transaction_date, is_reimbursable } = req.body;
-    const userId = req.query.user_id || 'default_user';
+    const { amount, description, merchant_name, category_id, transaction_date, is_reimbursable, user_id } = req.body; // user_id in body for updates usually
     
+    const finalUserId = user_id || req.query.user_id;
+
+    if (!finalUserId) {
+        return res.status(400).json({ success: false, error: 'User ID is required' });
+    }
+
     if (amount !== undefined && (typeof amount !== 'number' || amount <= 0)) {
-      return res.status(400).json({
-        success: false,
-        error: { message: 'Amount must be a positive number' }
-      });
+      return res.status(400).json({ success: false, error: { message: 'Amount must be a positive number' } });
     }
     
-    const transaction = await transactionService.updateTransaction(id, userId, {
+    const transaction = await transactionService.updateTransaction(id, finalUserId, {
       amount,
       description,
       merchant_name,
@@ -175,43 +178,34 @@ async function updateTransaction(req, res, next) {
     });
     
     if (!transaction) {
-      return res.status(404).json({
-        success: false,
-        error: { message: 'Transaction not found' }
-      });
+      return res.status(404).json({ success: false, error: { message: 'Transaction not found or unauthorized' } });
     }
     
-    res.json({
-      success: true,
-      data: transaction,
-      message: 'Transaction updated successfully'
-    });
+    res.json({ success: true, data: transaction, message: 'Transaction updated successfully' });
   } catch (error) {
     next(error);
   }
 }
 
 /**
- * Delete a transaction
+ * Delete Transaction
  */
 async function deleteTransaction(req, res, next) {
   try {
     const { id } = req.params;
-    const userId = req.query.user_id || 'default_user';
-    
-    const deleted = await transactionService.deleteTransaction(id, userId);
-    
-    if (!deleted) {
-      return res.status(404).json({
-        success: false,
-        error: { message: 'Transaction not found' }
-      });
+    const { user_id } = req.body; 
+
+    if (!user_id) {
+        return res.status(400).json({ success: false, error: 'User ID is required' });
     }
     
-    res.json({
-      success: true,
-      message: 'Transaction deleted successfully'
-    });
+    const deleted = await transactionService.deleteTransaction(id, user_id);
+    
+    if (!deleted) {
+      return res.status(404).json({ success: false, error: { message: 'Transaction not found or unauthorized' } });
+    }
+    
+    res.json({ success: true, message: 'Transaction deleted successfully' });
   } catch (error) {
     next(error);
   }

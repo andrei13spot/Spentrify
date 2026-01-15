@@ -6,9 +6,12 @@ import {
 import { useRouter, Stack, useLocalSearchParams } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useGoalsStore } from '../../goals-store';
+import { useAuth } from '../../../context/AuthContext';
+
 
 export default function EditGoalScreen() {
   const router = useRouter();
+  const { user } = useAuth();
   const { id } = useLocalSearchParams();
   const { goals, updateGoal, deleteGoal } = useGoalsStore();
 
@@ -64,9 +67,9 @@ export default function EditGoalScreen() {
   };
 
   // --- ACTIONS ---
-  const handleSave = () => {
-    if (!amount || !goalName) return;
-    updateGoal({
+  const handleSave = async () => {
+    if (!amount || !goalName || !user?.id) return;
+    await updateGoal(user.id, {
       id: id as string,
       name: goalName,
       amount,
@@ -79,7 +82,15 @@ export default function EditGoalScreen() {
   const handleDelete = () => {
     Alert.alert("Delete Goal", "Are you sure?", [
       { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: () => { deleteGoal(id as string); router.back(); } }
+      { 
+        text: "Delete", 
+        style: "destructive", 
+        onPress: async () => { 
+          if (!user?.id) return; 
+          await deleteGoal(user.id, id as string); 
+          router.back(); 
+        } 
+      }
     ]);
   };
 

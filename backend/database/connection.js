@@ -3,12 +3,9 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 
 // database file path from .env or default location
-// Gamitin ang process.cwd() para safe kahit anong Node version
 const DB_PATH = process.env.DB_PATH || path.join(process.cwd(), 'spentrify.db');
 let db = null;
 
-// small helper so we can use db.query with promises
-// SQLite uses a callback style, so we wrap it
 function query(sql, params = []) {
   return new Promise((resolve, reject) => {
     db.all(sql, params, (err, rows) => {
@@ -58,11 +55,7 @@ function run(sql, params = []) {
  *    - Supports multiple source types (GCash, Maya, BDO, Cash)
  *    - Tracks reimbursable expenses and receipt images
  * 
- * 4. Budgets - User-defined spending targets
- *    - Can be category-specific or overall
- *    - Supports different periods (Monthly, Weekly, etc.)
- * 
- * 5. AI_Insights - Auto-Audit Engine output
+ * 4. AI_Insights - Auto-Audit Engine output
  *    - Stores AI-generated insights and alerts
  *    - Tracks read/unread status
  * 
@@ -196,35 +189,7 @@ async function initDb() {
         console.log('✓ Transactions table created');
       });
 
-      // TABLE 4: Budgets - spending limits users set
-      // category_id: NULL means overall budget, otherwise it's for a specific category
-      // period: 'Daily', 'Weekly', 'Monthly', or 'Yearly'
-      // target_amount_encrypted: encrypted budget amount
-
-      db.run(`
-        CREATE TABLE IF NOT EXISTS Budgets (
-          budget_id INTEGER PRIMARY KEY AUTOINCREMENT,
-          user_id INTEGER NOT NULL,
-          category_id INTEGER,
-          target_amount_encrypted TEXT NOT NULL,
-          period TEXT DEFAULT 'Monthly',
-          start_date DATE,
-          end_date DATE,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY (user_id) REFERENCES Users(user_id) ON DELETE CASCADE,
-          FOREIGN KEY (category_id) REFERENCES Categories(category_id) ON DELETE SET NULL
-        )
-      `, (err) => {
-        if (err) {
-          console.error('failed to create Budgets table:', err);
-          db.run('ROLLBACK');
-          return reject(err);
-        }
-        console.log('✓ Budgets table created');
-      });
-
-      // TABLE 5: AI_Insights - AI suggestions and alerts
+      // TABLE 4: AI_Insights - AI suggestions and alerts
       // insight_type: what kind of insight ('Overspending', 'Subscription', 'Habit', 'ITR')
       // message: the actual message to show user
       // is_read: 0 = unread, 1 = read
@@ -248,7 +213,7 @@ async function initDb() {
       });
 
       /**
-       * TABLE 6: Notifications
+       * TABLE 5: Notifications
        * Stores logs for every transaction and goal action
        */
       db.run(`
@@ -264,6 +229,25 @@ async function initDb() {
       `, (err) => {
         if (err) console.error('Failed to create Notifications table:', err);
         else console.log('✓ Notifications table created');
+      });
+
+      // TABLE 6: SavingsGoals
+      // Stores user goals with encrypted amounts and names
+      db.run(`
+        CREATE TABLE IF NOT EXISTS SavingsGoals (
+          goal_id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL,
+          name_encrypted TEXT NOT NULL,           -- Encrypted Goal Name (e.g. "Laptop")
+          target_amount_encrypted TEXT NOT NULL,  -- Encrypted Target (e.g. "50000")
+          current_amount_encrypted TEXT DEFAULT '0', -- Encrypted Current Savings
+          deadline_date TEXT,                     -- Format: MM/DD/YYYY
+          status TEXT DEFAULT 'IN_PROGRESS',      -- 'IN_PROGRESS' or 'COMPLETED'
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (user_id) REFERENCES Users(user_id) ON DELETE CASCADE
+        )
+      `, (err) => {
+        if (err) console.error('failed to create SavingsGoals table:', err);
+        else console.log('✓ SavingsGoals table created (Encrypted Mode)');
       });
 
       /**

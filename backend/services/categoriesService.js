@@ -10,7 +10,6 @@ const db = require('../database/connection');
 /**
  * FEATURE: Categorization Logic
  * Mapping ng keywords base sa Merchant name mula sa SMS/Notifications.
- * Ito ang magsisilbing basehan para sa "One-Tap" selection.
  */
 const KEYWORD_MAP = {
   'Food': ['jollibee', 'mcdonalds', 'grabfood', 'foodpanda', 'starbucks', 'kfc', 'burger king'],
@@ -24,8 +23,6 @@ const KEYWORD_MAP = {
 };
 
 /**
- * Nag-usuggest ng category_id base sa merchant name.
- * Ginagamit para sa "Instant Categorization Pop-Up" (Feature 2).
  * @param {string} merchantName 
  * @returns {Promise<number|null>}
  */
@@ -37,7 +34,6 @@ async function suggestCategory(merchantName) {
   
   if (matchedKey) {
     const categoryName = KEYWORD_MAP[matchedKey];
-    // Gagamitin ang Categories table na nasa connection.js niyo
     const rows = await db.query(
       'SELECT category_id FROM Categories WHERE category_name = ? LIMIT 1',
       [categoryName]

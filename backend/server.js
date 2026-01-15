@@ -17,6 +17,7 @@ const notificationsRoutes = require('./routes/notifications');
 const exportsRoutes = require('./routes/exports');
 const analyticsRoutes = require('./routes/analytics');
 const insightsRoutes = require('./routes/insights');
+const goalsRoutes = require('./routes/goals');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -39,10 +40,10 @@ app.use('/api/auth', authRoutes);
 
 // transactions API (main thing for this project)
 app.use('/api/transactions', transactionsRoutes);
-app.use('/api/categories', categoriesRoutes); // ADDED: Enable Categories endpoint
+app.use('/api/categories', categoriesRoutes); 
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/budgets', budgetsRoutes);
-app.use('/api/goals', budgetsRoutes);
+app.use('/api/goals', goalsRoutes);
 
 // analytics API (UC-4: Spending Dashboard)
 app.use('/api/analytics', analyticsRoutes);

@@ -8,7 +8,22 @@ import React, {
   useCallback,
 } from "react";
 import { Platform } from "react-native";
+import axios from "axios"; // 👈 USE AXIOS
 import { useAuth } from "./AuthContext";
+
+/* ================= CONFIG ================= */
+
+function getApiBaseUrl(): string {
+  if (process.env.EXPO_PUBLIC_API_URL) {
+    return process.env.EXPO_PUBLIC_API_URL;
+  }
+  if (Platform.OS === "android") {
+    return "http://10.0.2.2:3000";
+  }
+  return "http://localhost:3000";
+}
+
+const API_BASE_URL = getApiBaseUrl();
 
 /* ================= TYPES ================= */
 
@@ -18,6 +33,8 @@ export type Expense = {
   createdAt: string;
 };
 
+// NOTE: Based on your code, "Transaction" type here actually looks like a "Budget/Goal".
+// "allTransactions" holds the actual expense records.
 export type Transaction = {
   id: string;
   name: string;
@@ -39,16 +56,16 @@ export type GeneratedReport = {
 };
 
 type DataContextType = {
-  transactions: Transaction[];
-  allTransactions: any[];
+  transactions: Transaction[]; // This seems to be your Budgets/Goals list
+  allTransactions: any[];      // This is your Actual Expenses list
   loading: boolean;
 
-  addTransaction: (transaction: Transaction) => Promise<void>;
+  // Updated signatures to match Backend Logic
+  addTransaction: (data: any) => Promise<void>;
+  updateTransaction: (id: string, updates: any) => Promise<void>;
+  deleteTransaction: (id: string) => Promise<void>;
+  
   refreshData: () => Promise<void>;
-
-  /** ✅ EDIT & DELETE */
-  updateTransaction: (id: string, updates: Partial<Transaction>) => void;
-  deleteTransaction: (id: string) => void;
 
   reportsByItemId: Record<string, GeneratedReport[]>;
   generateReportForItem: (itemId: string) => void;
@@ -67,18 +84,6 @@ function uid(prefix = "id") {
   return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
 
-function getApiBaseUrl(): string {
-  if (process.env.EXPO_PUBLIC_API_URL) {
-    return process.env.EXPO_PUBLIC_API_URL;
-  }
-  if (Platform.OS === "android") {
-    return "http://10.0.2.2:3000";
-  }
-  return "http://localhost:3000";
-}
-
-const API_BASE_URL = getApiBaseUrl();
-
 /* ================= PROVIDER ================= */
 
 export function DataProvider({ children }: { children: React.ReactNode }) {
@@ -86,9 +91,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [allTransactions, setAllTransactions] = useState<any[]>([]);
-  const [reportsByItemId, setReportsByItemId] = useState<
-    Record<string, GeneratedReport[]>
-  >({});
+  const [reportsByItemId, setReportsByItemId] = useState<Record<string, GeneratedReport[]>>({});
   const [loading, setLoading] = useState(false);
 
   const previousUserId = useRef<string | null>(null);
@@ -101,7 +104,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setReportsByItemId({});
   }, []);
 
-  /* ================= FETCH DATA ================= */
+  /* ================= FETCH DATA (READ) ================= */
 
   const fetchData = useCallback(async () => {
     if (!user?.id) {
@@ -112,29 +115,23 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     try {
       setLoading(true);
 
-      // Note: budgets = goals (same thing, both endpoints use the same routes)
+      // Using Axios for cleaner syntax
       const [budgetsRes, txRes, categoriesRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/api/budgets?user_id=${user.id}`), // Also accessible via /api/goals
-        fetch(`${API_BASE_URL}/api/transactions?user_id=${user.id}`),
-        fetch(`${API_BASE_URL}/api/categories`),
+        axios.get(`${API_BASE_URL}/api/budgets?user_id=${user.id}`),
+        axios.get(`${API_BASE_URL}/api/transactions?user_id=${user.id}`),
+        axios.get(`${API_BASE_URL}/api/categories`),
       ]);
 
-      const budgetsJson = await budgetsRes.json();
-      const txJson = await txRes.json();
-      const categoriesJson = await categoriesRes.json();
+      const budgets = budgetsRes.data.data || [];
+      const userTransactions = txRes.data.data || []; // The actual expenses
+      const categories = categoriesRes.data.data || [];
 
-      if (!budgetsJson.success || !txJson.success) return;
-
-      const budgets = budgetsJson.data || [];
-      const userTransactions = txJson.data || [];
-      const categories = categoriesJson.success
-        ? categoriesJson.data || []
-        : [];
-
+      // Create a Map for categories
       const categoryMap = new Map(
         categories.map((c: any) => [c.category_id, c.category_name])
       );
 
+      // --- LOGIC TO MAP BUDGETS & CALCULATE TRENDS ---
       const transformed: Transaction[] = budgets.map((budget: any) => {
         const relatedTx = userTransactions.filter((tx: any) =>
           budget.category_id
@@ -154,7 +151,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         const dailySpending = new Map<string, number>();
 
         relatedTx.forEach((tx: any) => {
-          const d = new Date(tx.transaction_date || tx.created_at);
+          // Fallback logic for date
+          const dateStr = tx.transaction_date || tx.created_at || new Date().toISOString();
+          const d = new Date(dateStr);
+          
           if (d >= sevenDaysAgo) {
             const key = d.toISOString().split("T")[0];
             dailySpending.set(key, (dailySpending.get(key) || 0) + tx.amount);
@@ -188,8 +188,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         };
       });
 
-      setTransactions(transformed);
-      setAllTransactions(userTransactions);
+      setTransactions(transformed); // Used for Budget Cards
+      setAllTransactions(userTransactions); // Used for Recent Transactions List
+
     } catch (err) {
       console.error("Fetch error:", err);
     } finally {
@@ -215,36 +216,80 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user, fetchData, clearAllData]);
 
-  /* ================= ACTIONS ================= */
+  /* ================= ACTIONS (CRUD) ================= */
 
-  const addTransaction = useCallback(
-    async (_transaction: Transaction) => {
-      await fetchData(); // UI refresh only
+  /** ADD TRANSACTION (Create) */
+  const addTransaction = useCallback(async (transactionData: any) => {
+      if (!user || !user.id) {
+        console.error("Add Transaction Failed: No User Logged In");
+        return; 
+      }
+
+      // 🔍 DEBUG: Tignan natin kung sino talaga ang user
+      console.log("Current Auth User:", user.id); 
+
+      try {
+        // Kahit may "default_user" na laman ang transactionData, papalitan natin ito.
+        const finalData = {
+          ...transactionData,
+          user_id: Number(user.id) // ORCE USE AUTH USER ID
+        };
+
+        console.log("🚀 Sending to Backend:", finalData); // Check mo to sa log
+
+        await axios.post(`${API_BASE_URL}/api/transactions`, finalData);
+        
+        await fetchData(); 
+      } catch (error) {
+        console.error("Failed to add transaction:", error);
+        throw error;
+      }
     },
-    [fetchData]
+    [user, fetchData] 
   );
 
-  /** ✅ EDIT */
-  const updateTransaction = useCallback(
-    (id: string, updates: Partial<Transaction>) => {
-      setTransactions((prev) =>
-        prev.map((t) => (t.id === id ? { ...t, ...updates } : t))
-      );
+  /** EDIT TRANSACTION (Update) */
+  const updateTransaction = useCallback(async (id: string, updates: any) => {
+      if (!user?.id) return;
+
+      try {
+        await axios.put(`${API_BASE_URL}/api/transactions/${id}`, {
+          ...updates,
+          user_id: user.id // 
+        });
+
+        await fetchData(); // Refresh UI after update
+      } catch (error) {
+        console.error("Failed to update transaction:", error);
+      }
     },
-    []
+    [user?.id, fetchData]
   );
 
-  /** ✅ DELETE */
-  const deleteTransaction = useCallback((id: string) => {
-    setTransactions((prev) => prev.filter((t) => t.id !== id));
-    setReportsByItemId((prev) => {
-      const copy = { ...prev };
-      delete copy[id];
-      return copy;
-    });
-  }, []);
+  /** ✅ DELETE TRANSACTION (Delete) */
+  const deleteTransaction = useCallback(async (id: string) => {
+    if (!user?.id) return;
 
-  /** ✅ REPORT */
+    try {
+      // Axios Delete with Body Data
+      await axios.delete(`${API_BASE_URL}/api/transactions/${id}`, {
+        data: { user_id: user.id }
+      });
+
+      await fetchData(); // Refresh UI after delete
+      
+      // Also clean up local reports
+      setReportsByItemId((prev) => {
+        const copy = { ...prev };
+        delete copy[id];
+        return copy;
+      });
+    } catch (error) {
+      console.error("Failed to delete transaction:", error);
+    }
+  }, [user?.id, fetchData]);
+
+  /** REPORT (Local Mock) */
   const generateReportForItem = useCallback((itemId: string) => {
     const report: GeneratedReport = {
       id: uid("report"),
@@ -262,7 +307,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const clearForLogout = useCallback(() => {
-    // intentionally empty – identity watcher handles reset
+    // handled by identity watcher
   }, []);
 
   /* ================= VALUE ================= */

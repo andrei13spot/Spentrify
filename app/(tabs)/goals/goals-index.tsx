@@ -1,12 +1,20 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
 import { useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useGoalsStore } from '../../goals-store';
+import { useAuth } from '../../../context/AuthContext';
 
 export default function GoalsIndex() {
   const router = useRouter();
-  const { goals } = useGoalsStore();
+  const { user } = useAuth(); 
+  const { goals, fetchGoals } = useGoalsStore();
+
+  useEffect(() => {
+    if (user?.id) {
+      fetchGoals(user.id);
+    }
+  }, [user?.id, fetchGoals]);
 
   const formatMoney = (value: string) => {
     return value.replace(/\B(?=(\d{3})+(?!\d))/g, ",");

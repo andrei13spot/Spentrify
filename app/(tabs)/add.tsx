@@ -10,14 +10,16 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Alert // Added Alert for safety
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import axios from 'axios'; // 1. IMPORT AXIOS
+import axios from 'axios'; 
 
 import TransactionConfirmedModal from "../../components/TransactionConfirmedModal";
 import TransactionErrorModal from "../../components/TransactionErrorModal";
 import { useData } from "../../context/DataContext";
 import { useNotifications } from "../../context/NotificationContext";
+import { useAuth } from "../../context/AuthContext"; // 👈 1. IMPORT USEAUTH
 
 /* ================= DATA ================= */
 
@@ -37,10 +39,9 @@ const CATEGORIES = [
   "Others",
 ];
 
-// 2. MAPPING: UI Strings -> Database IDs
 const CATEGORY_MAP: Record<string, number> = {
   "Food": 1,
-  "Groceries": 2, // Assuming mapped to Food or separate
+  "Groceries": 2, 
   "Transportation": 3,
   "Electricity": 4,
   "Water": 5,
@@ -62,6 +63,7 @@ export default function AddTransaction() {
 
   /* ================= GLOBAL DATA ================= */
   const { addTransaction } = useData();
+  const { user } = useAuth(); // 👈 2. GET CURRENT USER
 
   /* ================= MODAL STATE ================= */
   const [showModal, setShowModal] = useState(false);
@@ -81,7 +83,6 @@ export default function AddTransaction() {
   const [category, setCategory] = useState("Select Category");
   const [isReimbursable, setIsReimbursable] = useState(false);
   
-  // Set default date to today for better UX
   const today = new Date();
   const defaultDateStr = `${String(today.getMonth() + 1).padStart(2, '0')}/${String(today.getDate()).padStart(2, '0')}/${today.getFullYear()}`;
   const [date, setDate] = useState(defaultDateStr);
@@ -89,7 +90,7 @@ export default function AddTransaction() {
   /* ================= UI STATE ================= */
   const [showCategory, setShowCategory] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [loading, setLoading] = useState(false); // Add loading state
+  const [loading, setLoading] = useState(false); 
 
   /* ================= TEMP DATE INPUTS ================= */
   const [tempMonth, setTempMonth] = useState("01");
@@ -111,6 +112,12 @@ export default function AddTransaction() {
   /* ================= CONFIRM  ================= */
 
   const handleConfirmTransaction = async () => {
+    // 🛑 SAFETY CHECK: USER MUST BE LOGGED IN
+    if (!user || !user.id) {
+        Alert.alert("Error", "You must be logged in to save a transaction.");
+        return;
+    }
+
     // 1. Validation
     if (!amount || Number(amount) <= 0) {
       setErrorMessage("Please enter a valid amount.");
@@ -130,7 +137,7 @@ export default function AddTransaction() {
       return;
     }
 
-    // 2. Prepare Data for UI Updates (Notifications/Modals)
+    // 2. Prepare Data for UI Updates
     const now = new Date();
     const formattedDate = now.toLocaleDateString();
     const formattedTime = now.toLocaleTimeString([], {
@@ -141,24 +148,22 @@ export default function AddTransaction() {
     setLoading(true);
 
     try {
-        // 3. BACKEND INTEGRATION: Only run if it's a Transaction (not a Goal)
+        // 3. BACKEND INTEGRATION
         if (!isGoal) {
-            // Get DB ID from the Map, default to 13 (Others) if not found
             const dbCategoryId = CATEGORY_MAP[category] || 13;
 
-            // Convert UI Date (MM/DD/YYYY) to ISO String for DB
-            const dateParts = date.split('/'); // [MM, DD, YYYY]
-            // Create date object (Month is 0-indexed in JS)
+            const dateParts = date.split('/'); 
             const isoDate = new Date(
                 parseInt(dateParts[2]), 
                 parseInt(dateParts[0]) - 1, 
                 parseInt(dateParts[1])
             ).toISOString();
 
+            // 👇 3. USE DYNAMIC USER ID HERE
             const payload = {
-                user_id: 1, // Default user
+                user_id: Number(user.id), // 👈 FIX: User 2 na ang gagamitin!
                 amount: parseFloat(amount),
-                merchant_name: details, // Use details as merchant/title
+                merchant_name: details, 
                 description: details,
                 category_id: dbCategoryId,
                 transaction_date: isoDate,
@@ -166,14 +171,15 @@ export default function AddTransaction() {
                 is_manual: 1
             };
 
-            console.log("Saving to Backend:", payload);
+            console.log("🚀 Saving to Backend for User:", user.id);
 
             // SEND TO BACKEND
+            // Note: Use your API URL config or localhost logic here
             await axios.post('http://10.0.2.2:3000/api/transactions', payload);
             console.log("✅ Saved to Database!");
         }
 
-        // 4. Update Context & Notifications (Keep existing logic for instant UI feedback)
+        // 4. Update Context & Notifications
         const newTransaction = {
             id: Date.now().toString(),
             name: details,
@@ -186,6 +192,9 @@ export default function AddTransaction() {
             isReimbursable: isReimbursable,
         };
 
+        // NOTE: If addTransaction in context ALSO calls API, 
+        // you might want to comment this out to avoid double saving. 
+        // But for now, let's keep it to update the UI instantly.
         addTransaction(newTransaction);
 
         addNotification({
@@ -210,7 +219,6 @@ export default function AddTransaction() {
   /* ================= DATE CONFIRM ================= */
 
   const confirmDate = () => {
-    // Pad with zeros for consistency
     setDate(`${tempMonth}/${tempDay}/${tempYear}`);
     setShowDatePicker(false);
   };
@@ -276,7 +284,7 @@ export default function AddTransaction() {
           </TouchableOpacity>
         </View>
 
-        {/* REIMBURSABLE TOGGLE (UC-7) */}
+        {/* REIMBURSABLE TOGGLE */}
         {!isGoal && (
           <View style={styles.reimbursableRow}>
             <View style={styles.reimbursableLabelContainer}>
@@ -386,7 +394,7 @@ export default function AddTransaction() {
           onClose={() => {
             setShowModal(false);
             resetForm();
-            router.replace(isGoal ? "/(tabs)/goals" : "/(tabs)/home");
+            router.replace("/(tabs)/home");
           }}
         />
       </View>
@@ -456,7 +464,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
     padding: 12,
-    maxHeight: 400, // Added max height to modal
+    maxHeight: 400, 
   },
   modalItem: { padding: 14 },
   modalText: { fontSize: 16 },

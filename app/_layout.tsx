@@ -2,12 +2,13 @@ import { useFonts } from "expo-font";
 import * as KeepAwake from "expo-keep-awake";
 import { Stack } from "expo-router";
 import { useEffect } from "react";
-import { ActivityIndicator, View } from "react-native";
+import { ActivityIndicator, View, PermissionsAndroid } from "react-native";
 
 import { AuthProvider } from "../context/AuthContext";
 import { DataProvider } from "../context/DataContext";
 import { NotificationProvider } from "../context/NotificationContext";
-import { PermissionsAndroid, Alert } from 'react-native';
+
+
 
 // Added this for SMS Listening
 import TransactionListener from "../components/TransactionListener";
@@ -26,9 +27,9 @@ export default function RootLayout() {
           }
         );
         if (granted === PermissionsAndroid.RESULTS.GRANTED) {
-          console.log("✅ SMS Permission Granted");
+          console.log("SMS Permission Granted");
         } else {
-          console.log("❌ SMS Permission Denied");
+          console.log("SMS Permission Denied");
           // Optional: Alert the user why it's needed
           // Alert.alert("Permission Required", "SMS detection features will not work without permission.");
         }

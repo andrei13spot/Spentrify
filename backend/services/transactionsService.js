@@ -8,7 +8,6 @@ const encryptionService = require('./encryption');
  * - Decrypts amount, merchant, and description
  */
 async function getAllTransactions(userId) {
-  // JOIN: Kinukuha natin ang category_name mula sa Categories table gamit ang category_id
   const sql = `
     SELECT 
       t.transaction_id, 
@@ -96,7 +95,7 @@ async function getTransactionById(id, userId) {
  * - Saves merchant_name and category_id
  */
 async function createTransaction(transactionData) {
-  // 1. Encrypt Data
+  // Encrypt Data
   const amountEncrypted = encryptionService.encrypt(
     transactionData.amount.toString()
   );
@@ -109,7 +108,7 @@ async function createTransaction(transactionData) {
     ? encryptionService.encrypt(transactionData.description)
     : null;
 
-  // 2. Insert into DB
+  // Insert into DB
   const sql = `
     INSERT INTO Transactions (
       user_id, 

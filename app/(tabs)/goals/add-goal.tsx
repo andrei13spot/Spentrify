@@ -2,10 +2,13 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, SafeAreaView, Modal } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useAuth } from '../../../context/AuthContext';
 import { useGoalsStore } from '../../goals-store';
+
 
 export default function AddGoalScreen() {
   const router = useRouter();
+  const { user } = useAuth();
   const { addGoal } = useGoalsStore();
 
   const [amount, setAmount] = useState('');
@@ -27,15 +30,17 @@ export default function AddGoalScreen() {
     setter(numericValue);
   };
 
-  const handleConfirm = () => {
-    if (!amount || !goalName) return;
-    addGoal({ 
-      id: Date.now().toString(), 
+  const handleConfirm = async () => {
+    if (!amount || !goalName || !user?.id) return;
+    
+
+    await addGoal(user.id, { 
       name: goalName, 
       amount, 
       currentSavings: currentSavings || '0', 
       date 
     });
+    
     router.back();
   };
 
