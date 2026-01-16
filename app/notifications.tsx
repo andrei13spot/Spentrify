@@ -17,11 +17,12 @@ import {
 import axios from "axios"; 
 import { useAuth } from "../context/AuthContext";
 
+// 👇 1. UPDATE TYPE DEFINITION TO MATCH DATABASE
 type NotificationItem = {
-  id: string;
+  notification_id: number; // Changed from 'id' to 'notification_id'
   title: string;
   message: string;
-  date: string;
+  created_at: string;      // Changed from 'date' to 'created_at'
   is_read: number;
 };
 
@@ -33,7 +34,10 @@ export default function NotificationsScreen() {
   const [loading, setLoading] = useState(true);
 
   const fetchNotifications = useCallback(async () => {
-    if (!user?.id) return;
+    if (!user || !user.id) {
+        setLoading(false); 
+        return;
+    }
 
     try {
       const response = await axios.get(`http://10.0.2.2:3000/api/notifications?user_id=${user.id}`);
@@ -44,9 +48,9 @@ export default function NotificationsScreen() {
     } catch (error) {
       console.error("Failed to fetch notifications:", error);
     } finally {
-      setLoading(false);
+      setLoading(false); 
     }
-  }, [user?.id]); 
+  }, [user]);
 
   useFocusEffect(
     useCallback(() => {
@@ -54,12 +58,13 @@ export default function NotificationsScreen() {
     }, [fetchNotifications]) 
   );
 
-  // 3. DELETE SINGLE NOTIFICATION
-  const handleRemove = async (id: string) => {
+  // 3. DELETE SINGLE NOTIFICATION (Updated ID usage)
+  const handleRemove = async (id: number) => {
     if (!user?.id) return;
 
     LayoutAnimation.easeInEaseOut();
-    setNotifications(prev => prev.filter(item => item.id !== id));
+    // 👇 Update filter to use notification_id
+    setNotifications(prev => prev.filter(item => item.notification_id !== id));
 
     try {
       await axios.delete(`http://10.0.2.2:3000/api/notifications/${id}?user_id=${user.id}`);
@@ -82,6 +87,12 @@ export default function NotificationsScreen() {
       console.error("Clear all error:", error);
       fetchNotifications(); 
     }
+  };
+
+  // Helper to format date
+  const formatDate = (dateString: string) => {
+    if (!dateString) return "";
+    return new Date(dateString).toLocaleDateString() + " " + new Date(dateString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
   return (
@@ -117,21 +128,24 @@ export default function NotificationsScreen() {
               // LIST
               <FlatList
                 data={notifications}
-                keyExtractor={(item) => item.id.toString()}
+                // 👇 FIX: Use notification_id here!
+                keyExtractor={(item) => item.notification_id.toString()}
                 contentContainerStyle={{
                   paddingTop: 8,
                   paddingBottom: 120, 
                 }}
                 renderItem={({ item }) => (
                   <TouchableOpacity
-                    onPress={() => handleRemove(item.id)}
+                    // 👇 FIX: Pass notification_id
+                    onPress={() => handleRemove(item.notification_id)}
                     style={styles.card}
                     activeOpacity={0.85}
                   >
                     <View style={{ flex: 1 }}>
                       <Text style={styles.cardTitle}>{item.title}</Text>
                       <Text style={styles.cardMessage}>{item.message}</Text>
-                      <Text style={styles.cardDate}>{item.date}</Text>
+                      {/* 👇 FIX: Use created_at */}
+                      <Text style={styles.cardDate}>{formatDate(item.created_at)}</Text>
                     </View>
 
                     <Ionicons

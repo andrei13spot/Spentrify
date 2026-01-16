@@ -159,8 +159,15 @@ async function createTransaction(req, res, next) {
     // 6. Trigger Notification
     try {
       const notifTitle = "Transaction Confirmed";
-      const notifMessage = `PHP ${cleanData.amount} • ${cleanData.description}`;
-      await notificationsService.createNotification(finalUserId, notifTitle, notifMessage);
+      const notifMessage = `PHP ${cleanData.amount.toLocaleString()} • ${cleanData.description}`;
+      
+      // Sisiguraduhin nating may createNotification function sa service
+      if (notificationsService && notificationsService.createNotification) {
+          await notificationsService.createNotification(finalUserId, notifTitle, notifMessage);
+          console.log("Notification created automatically");
+      } else {
+          console.warn("Warning: notificationsService.createNotification is missing.");
+      }
     } catch (notifError) {
       console.error("Notification Error (Ignored):", notifError);
     }

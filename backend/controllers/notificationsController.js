@@ -1,34 +1,43 @@
 const notificationsService = require('../services/notificationsService');
 
-async function getNotifications(req, res, next) {
+// GET
+async function getNotifications(req, res) {
   try {
-    const { userId } = req.body;
-    const notifications = await notificationsService.getUserNotifications(userId);
-    res.json({ success: true, data: notifications });
+    const userId = req.query.user_id;
+    if (!userId) return res.status(400).json({ success: false, error: 'User ID required' });
+
+    const data = await notificationsService.getNotifications(userId);
+    res.json({ success: true, data: data });
   } catch (error) {
-    next(error);
+    res.status(500).json({ success: false, error: error.message });
   }
 }
 
-async function deleteNotification(req, res, next) {
+// DELETE SINGLE
+async function deleteNotification(req, res) {
   try {
-    const { userId } = req.body;
     const { id } = req.params;
+    const userId = req.query.user_id;
     await notificationsService.deleteNotification(id, userId);
-    res.json({ success: true, message: 'Notification removed' });
+    res.json({ success: true });
   } catch (error) {
-    next(error);
+    res.status(500).json({ success: false, error: error.message });
   }
 }
 
-async function clearAll(req, res, next) {
+// DELETE ALL
+async function deleteAllNotifications(req, res) {
   try {
-    const { userId } = req.body;
-    await notificationsService.clearAllNotifications(userId);
-    res.json({ success: true, message: 'All notifications cleared' });
+    const userId = req.query.user_id;
+    await notificationsService.deleteAllNotifications(userId);
+    res.json({ success: true });
   } catch (error) {
-    next(error);
+    res.status(500).json({ success: false, error: error.message });
   }
 }
 
-module.exports = { getNotifications, deleteNotification, clearAll };
+module.exports = {
+  getNotifications,
+  deleteNotification,
+  deleteAllNotifications
+};

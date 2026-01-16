@@ -1,52 +1,34 @@
-// backend/services/notificationsService.js
-
 const { query, run } = require('../database/connection');
 
-// Create a new notification
+// 1. GET ALL (Para makuha ng Frontend)
+async function getNotifications(userId) {
+  // Kunin ang latest muna (ORDER BY DESC)
+  const sql = `SELECT * FROM Notifications WHERE user_id = ? ORDER BY created_at DESC`;
+  return await query(sql, [userId]);
+}
+
+// 2. CREATE (Para sa Auto-Add ng Transaction)
 async function createNotification(userId, title, message) {
-  const sql = `
-    INSERT INTO Notifications (user_id, title, message)
-    VALUES (?, ?, ?)
-  `;
-  try {
-    await run(sql, [userId, title, message]);
-  } catch (error) {
-    console.error("Failed to save notification:", error);
-    // Don't throw error to prevent crashing the main transaction
-  }
+  const sql = `INSERT INTO Notifications (user_id, title, message) VALUES (?, ?, ?)`;
+  return await run(sql, [userId, title, message]);
 }
 
-// Get all notifications
-async function getUserNotifications(userId) {
-  const sql = `
-    SELECT * FROM Notifications 
-    WHERE user_id = ? 
-    ORDER BY created_at DESC
-  `;
-  const rows = await query(sql, [userId]);
-  
-  return rows.map(row => ({
-    id: row.notification_id.toString(),
-    title: row.title,
-    message: row.message,
-    date: new Date(row.created_at).toLocaleString(),
-    is_read: row.is_read
-  }));
-}
-
+// 3. DELETE (Single)
 async function deleteNotification(id, userId) {
   const sql = `DELETE FROM Notifications WHERE notification_id = ? AND user_id = ?`;
-  await run(sql, [id, userId]);
+  const result = await run(sql, [id, userId]);
+  return result.changes > 0;
 }
 
-async function clearAllNotifications(userId) {
+// 4. DELETE ALL (Clear All)
+async function deleteAllNotifications(userId) {
   const sql = `DELETE FROM Notifications WHERE user_id = ?`;
-  await run(sql, [userId]);
+  return await run(sql, [userId]);
 }
 
 module.exports = {
+  getNotifications,
   createNotification,
-  getUserNotifications,
   deleteNotification,
-  clearAllNotifications
+  deleteAllNotifications
 };
