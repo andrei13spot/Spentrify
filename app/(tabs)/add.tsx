@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { router, useLocalSearchParams } from "expo-router";
+import { router } from "expo-router";
 import { useState } from "react";
 import {
   FlatList,
@@ -10,7 +10,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-  Alert // Added Alert for safety
+  Alert 
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -18,9 +18,8 @@ import TransactionConfirmedModal from "../../components/TransactionConfirmedModa
 import TransactionErrorModal from "../../components/TransactionErrorModal";
 import { useData } from "../../context/DataContext";
 import { useNotifications } from "../../context/NotificationContext";
-import { useAuth } from "../../context/AuthContext"; // 👈 1. IMPORT USEAUTH
+import { useAuth } from "../../context/AuthContext"; 
 import { formatLocalDateKey } from "../../utils/date";
-import { useGoalsStore } from "../goals-store";
 
 /* ================= DATA ================= */
 
@@ -59,13 +58,10 @@ const CATEGORY_MAP: Record<string, number> = {
 /* ================= SCREEN ================= */
 
 export default function AddTransaction() {
-  const { mode } = useLocalSearchParams<{ mode?: string }>();
-  const isGoal = mode === "goal";
-
   /* ================= GLOBAL DATA ================= */
   const { addTransaction } = useData();
   const { user } = useAuth();
-  const { addGoal } = useGoalsStore();
+  // Removed: useGoalsStore (Not needed anymore)
 
   /* ================= MODAL STATE ================= */
   const [showModal, setShowModal] = useState(false);
@@ -98,6 +94,13 @@ export default function AddTransaction() {
   const [tempMonth, setTempMonth] = useState("01");
   const [tempDay, setTempDay] = useState("01");
   const [tempYear, setTempYear] = useState("2026");
+
+  /* ================= INPUT HELPER ================= */
+  // Handles numeric input validation (removes letters)
+  const handleNumericInput = (text: string, setter: (value: string) => void) => {
+    const numericValue = text.replace(/[^0-9.,]/g, '');
+    setter(numericValue);
+  };
 
   /* ================= RESET ================= */
 
@@ -133,7 +136,7 @@ export default function AddTransaction() {
       return;
     }
 
-    if (!isGoal && category === "Select Category") {
+    if (category === "Select Category") {
       setErrorMessage("Please select a category.");
       setShowError(true);
       return;
@@ -151,45 +154,36 @@ export default function AddTransaction() {
 
     try {
         // 3. BACKEND INTEGRATION
-        if (isGoal) {
-            await addGoal(user.id, {
-              name: details,
-              amount: amount,
-              currentSavings: "0",
-              date
-            });
-        } else {
-            const dbCategoryId = CATEGORY_MAP[category] || 13;
+        const dbCategoryId = CATEGORY_MAP[category] || 13;
 
-            const dateParts = date.split('/'); 
-            const localDate = formatLocalDateKey(
-              new Date(
-                parseInt(dateParts[2]),
-                parseInt(dateParts[0]) - 1,
-                parseInt(dateParts[1])
-              )
-            );
+        const dateParts = date.split('/'); 
+        const localDate = formatLocalDateKey(
+          new Date(
+            parseInt(dateParts[2]),
+            parseInt(dateParts[0]) - 1,
+            parseInt(dateParts[1])
+          )
+        );
 
-            const payload = {
-                amount: parseFloat(amount),
-                merchant_name: details, 
-                description: details,
-                category_id: dbCategoryId,
-                transaction_date: localDate,
-                source_type: 'Manual',
-                is_manual: 1
-            };
+        const payload = {
+            amount: parseFloat(amount),
+            merchant_name: details, 
+            description: details,
+            category_id: dbCategoryId,
+            transaction_date: localDate,
+            source_type: 'Manual',
+            is_manual: 1
+        };
 
-            console.log("Saving to backend for user:", user.id);
+        console.log("Saving to backend for user:", user.id);
 
-            await addTransaction(payload);
-            console.log("Saved to database.");
-        }
+        await addTransaction(payload);
+        console.log("Saved to database.");
 
         // 4. Update Notifications
         addNotification({
-            title: isGoal ? "Goal Added" : "Transaction Confirmed",
-            message: `₱${amount} • ${isGoal ? "Goal" : category}\n${details}`,
+            title: "Transaction Confirmed",
+            message: `₱${amount} • ${category}\n${details}`,
             date: formattedDate,
         });
 
@@ -225,7 +219,7 @@ export default function AddTransaction() {
           </TouchableOpacity>
 
           <Text style={styles.headerTitle}>
-            {isGoal ? "Add Goal" : "Add Transaction"}
+            Add Transaction
           </Text>
 
           <View style={{ width: 26 }} />
@@ -237,9 +231,9 @@ export default function AddTransaction() {
           <Text style={styles.currency}>₱</Text>
           <TextInput
             placeholder="0.00"
-            keyboardType="numeric"
+            keyboardType="decimal-pad" 
             value={amount}
-            onChangeText={setAmount}
+            onChangeText={(text) => handleNumericInput(text, setAmount)}
             style={styles.amountInput}
           />
         </View>
@@ -247,7 +241,7 @@ export default function AddTransaction() {
         {/* DETAILS */}
         <Text style={styles.label}>Details</Text>
         <TextInput
-          placeholder={isGoal ? "Goal name" : "Enter description"}
+          placeholder="Enter description"
           value={details}
           onChangeText={setDetails}
           style={styles.input}
@@ -255,18 +249,16 @@ export default function AddTransaction() {
 
         {/* CATEGORY & DATE */}
         <View style={styles.row}>
-          {!isGoal && (
-            <TouchableOpacity
-              style={styles.inputHalf}
-              onPress={() => setShowCategory(true)}
-            >
-              <Text style={styles.inputText}>{category}</Text>
-              <Ionicons name="chevron-down" size={18} />
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity
+            style={styles.inputHalf}
+            onPress={() => setShowCategory(true)}
+          >
+            <Text style={styles.inputText}>{category}</Text>
+            <Ionicons name="chevron-down" size={18} />
+          </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.inputHalf, isGoal && { width: "100%" }]}
+            style={styles.inputHalf}
             onPress={() => setShowDatePicker(true)}
           >
             <Text style={styles.inputText}>{date}</Text>
@@ -275,22 +267,20 @@ export default function AddTransaction() {
         </View>
 
         {/* REIMBURSABLE TOGGLE */}
-        {!isGoal && (
-          <View style={styles.reimbursableRow}>
-            <View style={styles.reimbursableLabelContainer}>
-              <Ionicons name="receipt-outline" size={20} color="#3B82F6" />
-              <Text style={styles.reimbursableLabel}>
-                Mark as Reimbursable
-              </Text>
-            </View>
-            <Switch
-              value={isReimbursable}
-              onValueChange={setIsReimbursable}
-              trackColor={{ false: "#D1D5DB", true: "#3B82F6" }}
-              thumbColor="#FFFFFF"
-            />
+        <View style={styles.reimbursableRow}>
+          <View style={styles.reimbursableLabelContainer}>
+            <Ionicons name="receipt-outline" size={20} color="#3B82F6" />
+            <Text style={styles.reimbursableLabel}>
+              Mark as Reimbursable
+            </Text>
           </View>
-        )}
+          <Switch
+            value={isReimbursable}
+            onValueChange={setIsReimbursable}
+            trackColor={{ false: "#D1D5DB", true: "#3B82F6" }}
+            thumbColor="#FFFFFF"
+          />
+        </View>
 
         {/* CONFIRM */}
         <TouchableOpacity
@@ -299,7 +289,7 @@ export default function AddTransaction() {
           disabled={loading}
         >
           <Text style={styles.confirmText}>
-            {isGoal ? "Confirm Goal" : "Confirm Transaction"}
+            Confirm Transaction
           </Text>
         </TouchableOpacity>
 
