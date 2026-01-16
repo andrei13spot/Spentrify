@@ -34,7 +34,6 @@ async function login(req, res, next) {
       }
     });
   } catch (error) {
-    // Don't expose exact error messages for security
     if (error.message.includes('Invalid') || error.message.includes('not found')) {
       return res.status(401).json({
         success: false,

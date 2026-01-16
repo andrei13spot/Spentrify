@@ -31,7 +31,7 @@ async function getAllTransactions(userId) {
 
   // Decryption & Formatting
   return rows.map((row) => ({
-    id: row.transaction_id, // Map DB 'transaction_id' to Frontend 'id'
+    id: row.transaction_id, 
     user_id: row.user_id,
     amount: parseFloat(encryptionService.decrypt(row.amount_encrypted)),
     merchant_name: row.merchant_name_encrypted 
@@ -40,7 +40,7 @@ async function getAllTransactions(userId) {
     description: row.description_encrypted
       ? encryptionService.decrypt(row.description_encrypted)
       : null,
-    category: row.category_name || 'Others', // Fallback name
+    category: row.category_name || 'Others', 
     category_id: row.category_id,
     icon: row.icon_identifier,
     transaction_date: row.transaction_date,
@@ -136,7 +136,7 @@ async function createTransaction(transactionData) {
     ]
   );
 
-  // 3. Return plain object (for Frontend confirmation)
+  // Return plain object 
   return {
     id: result.lastID,
     user_id: transactionData.user_id,
@@ -155,7 +155,6 @@ async function updateTransaction(id, userId, updates) {
   const fields = [];
   const values = [];
 
-  // Build dynamic query based on what fields are present
   if (updates.amount !== undefined) {
     fields.push('amount_encrypted = ?');
     values.push(encryptionService.encrypt(updates.amount.toString()));
@@ -191,7 +190,6 @@ async function updateTransaction(id, userId, updates) {
 
   values.push(id, userId);
 
-  // Note: Using 'transaction_id' column name
   const sql = `
     UPDATE Transactions
     SET ${fields.join(', ')}

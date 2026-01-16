@@ -63,7 +63,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // 1. LOAD USER FROM STORAGE ON APP START
+  // LOAD USER FROM STORAGE ON APP START
   useEffect(() => {
     const loadUser = async () => {
       try {
@@ -83,7 +83,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loadUser();
   }, []);
 
-  // 2. HELPER: UPDATE STATE & STORAGE (Wrapped in useCallback)
+  // HELPER: UPDATE STATE & STORAGE (Wrapped in useCallback)
   const updateUserId = useCallback(async (newUser: AuthUser | null) => {
     setUser(newUser);
     if (newUser) {
@@ -126,15 +126,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [updateUserId]); // Dependency: updateUserId
 
   const loginWithGoogle = useCallback(async () => {
-    throw new Error("Google sign-in is not configured yet.");
+    throw new Error("Google login not yet implemented. Please use email login.");
   }, []);
 
   const loginWithFacebook = useCallback(async () => {
-    throw new Error("Facebook sign-in is not configured yet.");
+    throw new Error("Facebook login not yet implemented. Please use email login.");
   }, []);
 
   const loginWithApple = useCallback(async () => {
-    throw new Error("Apple sign-in is not configured yet.");
+    throw new Error("Apple login not yet implemented. Please use email login.");
   }, []);
 
   // Wrapped in useCallback
@@ -199,7 +199,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setAuthUser, 
     logout,
   }), [
-    // 👇 NGAYON PWEDE MO NA SILA ISAMA DITO KASI NAKA-useCallback NA
     user, 
     isLoading, 
     signupWithEmail, 

@@ -17,12 +17,12 @@ import {
 import axios from "axios"; 
 import { useAuth } from "../context/AuthContext";
 
-// 👇 1. UPDATE TYPE DEFINITION TO MATCH DATABASE
+/* ================= TYPES ================= */
 type NotificationItem = {
-  notification_id: number; // Changed from 'id' to 'notification_id'
+  notification_id: number; 
   title: string;
   message: string;
-  created_at: string;      // Changed from 'date' to 'created_at'
+  created_at: string;      
   is_read: number;
 };
 
@@ -58,12 +58,11 @@ export default function NotificationsScreen() {
     }, [fetchNotifications]) 
   );
 
-  // 3. DELETE SINGLE NOTIFICATION (Updated ID usage)
+  // DELETE SINGLE NOTIFICATION (Updated ID usage)
   const handleRemove = async (id: number) => {
     if (!user?.id) return;
 
     LayoutAnimation.easeInEaseOut();
-    // 👇 Update filter to use notification_id
     setNotifications(prev => prev.filter(item => item.notification_id !== id));
 
     try {
@@ -128,7 +127,6 @@ export default function NotificationsScreen() {
               // LIST
               <FlatList
                 data={notifications}
-                // 👇 FIX: Use notification_id here!
                 keyExtractor={(item) => item.notification_id.toString()}
                 contentContainerStyle={{
                   paddingTop: 8,
@@ -136,7 +134,6 @@ export default function NotificationsScreen() {
                 }}
                 renderItem={({ item }) => (
                   <TouchableOpacity
-                    // 👇 FIX: Pass notification_id
                     onPress={() => handleRemove(item.notification_id)}
                     style={styles.card}
                     activeOpacity={0.85}
@@ -144,7 +141,6 @@ export default function NotificationsScreen() {
                     <View style={{ flex: 1 }}>
                       <Text style={styles.cardTitle}>{item.title}</Text>
                       <Text style={styles.cardMessage}>{item.message}</Text>
-                      {/* 👇 FIX: Use created_at */}
                       <Text style={styles.cardDate}>{formatDate(item.created_at)}</Text>
                     </View>
 
@@ -161,7 +157,7 @@ export default function NotificationsScreen() {
           </>
         )}
 
-        {/* 🔽 CLEAR ALL */}
+        {/* CLEAR ALL */}
         {notifications.length > 0 && (
           <View
             style={[
