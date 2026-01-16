@@ -25,7 +25,7 @@ export type CSVExportData = {
     totalTransactions?: number;
     totalAmount?: number;
     dateRange?: string;
-    categoryBreakdown?: Array<{ category: string; amount: number }>;
+    categoryBreakdown?: { category: string; amount: number }[];
   };
 };
 
@@ -61,61 +61,71 @@ export default function CSVExportPreviewModal({
   // Check if CSV is empty or has no data
   const hasData = exportData.csvContent.trim().length > 0 && totalLines > 0;
 
-  /* ================= DOWNLOAD CSV ================= */
+  /* ================= DOWNLOAD CSV (SAF IMPLEMENTATION) ================= */
 
   const handleDownload = async () => {
+    setDownloading(true);
     try {
-      setDownloading(true);
+      const { fileName, csvContent } = exportData;
+      // Ensure filename has .csv extension
+      const cleanFileName = fileName.endsWith('.csv') ? fileName : `${fileName}.csv`;
 
-      // Android: Save to user-selected folder (Downloads, Drive, etc.)
-      if (Platform.OS === "android" && FileSystem.StorageAccessFramework) {
-        let permissions;
-        try {
-          permissions =
-            await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
-        } catch (error) {
-          permissions = null;
-        }
-        if (!permissions?.granted) {
-          Alert.alert(
-            "Permission Needed",
-            "Please allow access to save the export file. You can also use Share to send the file."
-          );
-          return;
-        }
+      // ANDROID: Storage Access Framework
+      if (Platform.OS === "android") {
+        const { StorageAccessFramework } = FileSystem;
+        
+        // Request Permission to pick a folder
+        const permissions = await StorageAccessFramework.requestDirectoryPermissionsAsync();
 
-        const fileUri =
-          await FileSystem.StorageAccessFramework.createFileAsync(
+        if (permissions.granted) {
+          // Create the file in the selected folder
+          const uri = await StorageAccessFramework.createFileAsync(
             permissions.directoryUri,
-            exportData.fileName,
-            "text/csv"
+            cleanFileName,
+            "text/csv" // Mime type
           );
-        await FileSystem.writeAsStringAsync(fileUri, exportData.csvContent);
 
-        Alert.alert(
-          "Download Complete",
-          `Export saved to your selected folder as ${exportData.fileName}.`,
-          [{ text: "OK" }]
-        );
-        return;
+          // Write data to the file
+          await FileSystem.writeAsStringAsync(uri, csvContent, {
+            encoding: FileSystem.EncodingType.UTF8
+          });
+
+          Alert.alert(
+            "Success",
+            "File saved successfully!",
+            [{ text: "OK", onPress: onClose }]
+          );
+        } else {
+          // User cancelled the picker
+          // Don't show error, just ignore or show a toast
+        }
+      } 
+      // iOS / FALLBACK
+      else {
+        const fileUri = FileSystem.documentDirectory + cleanFileName;
+        await FileSystem.writeAsStringAsync(fileUri, csvContent, {
+            encoding: FileSystem.EncodingType.UTF8
+        });
+        
+        // On iOS, "Download" usually means "Share/Save to Files"
+        // So we trigger the share sheet which allows "Save to Files"
+        if (await Sharing.isAvailableAsync()) {
+            await Sharing.shareAsync(fileUri);
+        } else {
+            Alert.alert("Saved", `File saved to app documents: ${cleanFileName}`);
+        }
       }
 
-      // iOS / fallback: save inside app document directory
-      const documentDir = FileSystem.documentDirectory || "";
-      const fileUri = documentDir + exportData.fileName;
-      await FileSystem.writeAsStringAsync(fileUri, exportData.csvContent);
-
-      Alert.alert(
-        "Download Complete",
-        `Export saved inside the app as ${exportData.fileName}. Use Share to open it or send it.`,
-        [{ text: "OK" }]
-      );
     } catch (error) {
-      console.error("Error downloading export:", error);
+      console.error("Download Error:", error);
+      // Fallback offer
       Alert.alert(
-        "Download Failed",
-        "Unable to download the export. Please try Share instead.",
-        [{ text: "OK" }]
+        "Save Failed",
+        "Could not save directly. Would you like to try Sharing/Sending the file instead?",
+        [
+            { text: "Cancel", style: "cancel" },
+            { text: "Yes, Share it", onPress: handleShare }
+        ]
       );
     } finally {
       setDownloading(false);
@@ -125,36 +135,32 @@ export default function CSVExportPreviewModal({
   /* ================= SHARE CSV ================= */
 
   const handleShare = async () => {
+    setSharing(true);
     try {
-      setSharing(true);
+      const cleanFileName = exportData.fileName.endsWith('.csv') ? exportData.fileName : `${exportData.fileName}.csv`;
+      const fileUri = FileSystem.documentDirectory + cleanFileName;
 
-      const documentDir = FileSystem.documentDirectory || "";
-      const fileUri = documentDir + exportData.fileName;
-      await FileSystem.writeAsStringAsync(fileUri, exportData.csvContent);
+      // Write file locally first
+      await FileSystem.writeAsStringAsync(fileUri, exportData.csvContent, {
+        encoding: FileSystem.EncodingType.UTF8
+      });
 
-      // Check if sharing is available
-      const isAvailable = await Sharing.isAvailableAsync();
-      if (!isAvailable) {
-        Alert.alert(
-          "Sharing Not Available",
-          "Sharing is not available on this device.",
-          [{ text: "OK" }]
-        );
+      // Check availability
+      if (!(await Sharing.isAvailableAsync())) {
+        Alert.alert("Error", "Sharing is not available on this device.");
         return;
       }
 
-      // Share the file
+      // Share
       await Sharing.shareAsync(fileUri, {
         mimeType: "text/csv",
-        dialogTitle: `Share ${exportData.type === 'itr' ? 'ITR' : 'Reimbursement'} Export`,
+        dialogTitle: `Export ${exportData.title}`,
+        UTI: 'public.comma-separated-values-text' // Helps iOS recognize it as CSV
       });
+
     } catch (error) {
-      console.error("Error sharing export:", error);
-      Alert.alert(
-        "Share Failed",
-        "Unable to share the export. Please try again.",
-        [{ text: "OK" }]
-      );
+      console.error("Share Error:", error);
+      Alert.alert("Error", "Failed to share the file.");
     } finally {
       setSharing(false);
     }
