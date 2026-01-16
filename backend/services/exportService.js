@@ -31,8 +31,8 @@ async function generateITRExport(userId, startDate, endDate) {
     FROM Transactions t
     LEFT JOIN Categories c ON t.category_id = c.category_id
     WHERE t.user_id = ? 
-      AND t.transaction_date >= ? 
-      AND t.transaction_date <= ?
+      AND date(t.transaction_date) >= date(?)
+      AND date(t.transaction_date) <= date(?)
     ORDER BY c.is_itr_deductible DESC, c.category_name ASC, t.transaction_date DESC`,
     [userId, startDate, endDate]
   );
@@ -128,8 +128,8 @@ async function generateReimbursementExport(userId, startDate, endDate) {
     LEFT JOIN Categories c ON t.category_id = c.category_id
     WHERE t.user_id = ? 
       AND t.is_reimbursable = 1
-      AND t.transaction_date >= ? 
-      AND t.transaction_date <= ?
+      AND date(t.transaction_date) >= date(?)
+      AND date(t.transaction_date) <= date(?)
     ORDER BY t.transaction_date DESC`,
     [userId, startDate, endDate]
   );
@@ -190,8 +190,8 @@ async function getITRSummary(userId, startDate, endDate) {
     FROM Transactions t
     LEFT JOIN Categories c ON t.category_id = c.category_id
     WHERE t.user_id = ? 
-      AND t.transaction_date >= ? 
-      AND t.transaction_date <= ?`,
+      AND date(t.transaction_date) >= date(?)
+      AND date(t.transaction_date) <= date(?)`,
     [userId, startDate, endDate]
   );
 

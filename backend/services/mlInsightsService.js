@@ -10,6 +10,15 @@ const { query } = require('../database/connection');
 const analyticsService = require('./analyticsService');
 const encryptionService = require('./encryption');
 
+function toLocalDate(dateValue) {
+  if (!dateValue) return new Date(NaN);
+  if (typeof dateValue === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
+    const [year, month, day] = dateValue.split('-').map(Number);
+    return new Date(year, month - 1, day);
+  }
+  return new Date(dateValue);
+}
+
 /**
  * Generate ML-powered insights for a user
  * @param {number} userId - User ID
@@ -30,6 +39,12 @@ async function generateMLInsights(userId) {
   const anomalies = await detectAnomalies(userId, userData);
   insights.push(...anomalies);
   
+  // 2. Largest Purchase - Highlight highest spend
+  const largestPurchase = detectLargestPurchase(userData);
+  if (largestPurchase) {
+    insights.push(largestPurchase);
+  }
+
   // 2. Trend Analysis - Detect spending trends
   const trends = await analyzeTrends(userId, userData);
   insights.push(...trends);
@@ -99,7 +114,7 @@ async function getUserSpendingProfile(userId) {
   
   // Extract features
   const amounts = transactions.map(tx => tx.amount);
-  const dates = transactions.map(tx => new Date(tx.date));
+  const dates = transactions.map(tx => toLocalDate(tx.date));
   const categories = transactions.map(tx => ({
     id: tx.category_id,
     name: tx.category_name,
@@ -156,7 +171,7 @@ function calculateStatistics(amounts, dates) {
   // Frequency analysis (transactions per day)
   const dayCounts = new Map();
   dates.forEach(date => {
-    const key = date.toISOString().split('T')[0];
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
     dayCounts.set(key, (dayCounts.get(key) || 0) + 1);
   });
   const avgTransactionsPerDay = amounts.length / (dayCounts.size || 1);
@@ -214,6 +229,7 @@ async function detectAnomalies(userId, userData) {
   
   // Category anomaly detection
   const categoryStats = calculateCategoryStatistics(userData.categories);
+  let topCategoryAnomaly = null;
   for (const [categoryId, catStats] of categoryStats.entries()) {
     const recentCategoryTx = last7Days.filter(tx => tx.category_id === categoryId);
     if (recentCategoryTx.length > 0) {
@@ -222,16 +238,44 @@ async function detectAnomalies(userId, userData) {
       
       if (categoryTotal > avgWeekly * 1.5) {
         const categoryName = userData.categories.find(c => c.id === categoryId)?.name || 'this category';
-        insights.push({
-          type: 'Category Anomaly',
-          message: `${categoryName} spending is ${((categoryTotal / avgWeekly) * 100).toFixed(0)}% higher than your usual weekly pattern.`,
-          severity: 'medium'
-        });
+        const ratio = avgWeekly > 0 ? categoryTotal / avgWeekly : 0;
+        const message = `${categoryName} spending is ${((ratio) * 100).toFixed(0)}% higher than your usual weekly pattern.`;
+        if (!topCategoryAnomaly || ratio > topCategoryAnomaly.ratio) {
+          topCategoryAnomaly = { ratio, message };
+        }
       }
     }
   }
+
+  if (topCategoryAnomaly) {
+    insights.push({
+      type: 'Category Anomaly',
+      message: topCategoryAnomaly.message,
+      severity: 'medium'
+    });
+  }
   
   return insights;
+}
+
+/**
+ * Highlight the largest purchase in the current month
+ */
+function detectLargestPurchase(userData) {
+  const { currentMonth, transactions } = userData;
+  const source = currentMonth && currentMonth.length > 0 ? currentMonth : transactions;
+  if (!source || source.length === 0) {
+    return null;
+  }
+
+  const largest = source.reduce((max, tx) => (tx.amount > max.amount ? tx : max), source[0]);
+  const merchant = largest.merchant_name || largest.category_name || 'a merchant';
+  const date = new Date(largest.date).toISOString().split('T')[0];
+
+  return {
+    type: 'Largest Purchase',
+    message: `Your highest purchase this month was ₱${largest.amount.toLocaleString()} at ${merchant} on ${date}.`
+  };
 }
 
 /**
@@ -335,7 +379,7 @@ async function recognizeHabits(userId, userData) {
   }
   
   // Day-of-week pattern detection
-  const dayOfWeekPattern = analyzeDayOfWeekPattern(userData.transactions);
+  const dayOfWeekPattern = analyzeDayOfWeekPattern(userData.last30Days);
   if (dayOfWeekPattern) {
     insights.push({
       type: 'Spending Pattern',
@@ -354,6 +398,9 @@ async function predictSpending(userId, userData) {
   const { currentMonth, stats, dates } = userData;
   
   if (!currentMonth || currentMonth.length < 7) return insights;
+  if (!userData.previousMonth || userData.previousMonth.length < 5) {
+    return insights;
+  }
   
   const now = new Date();
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
@@ -369,11 +416,13 @@ async function predictSpending(userId, userData) {
   const projectedTotal = currentTotal + projectedRemaining;
   
   // Compare with historical average
-  if (stats && stats.mean) {
-    const historicalMonthly = stats.mean * stats.avgTransactionsPerDay * 30;
-    const deviation = ((projectedTotal - historicalMonthly) / historicalMonthly) * 100;
+  if (stats && stats.mean && userData.previousMonth.length >= 5) {
+    const historicalMonthly = userData.previousMonth.reduce((sum, tx) => sum + tx.amount, 0);
+    const deviation = historicalMonthly > 0
+      ? ((projectedTotal - historicalMonthly) / historicalMonthly) * 100
+      : 0;
     
-    if (Math.abs(deviation) > 10) {
+    if (historicalMonthly > 0 && Math.abs(deviation) > 10) {
       insights.push({
         type: 'Projection',
         message: `Based on your current spending rate, you're projected to spend ₱${Math.round(projectedTotal).toLocaleString()} this month. This is ${deviation > 0 ? 'above' : 'below'} your historical average by ${Math.abs(deviation).toFixed(0)}%.`,
@@ -424,6 +473,7 @@ async function analyzeCategories(userId, userData) {
   });
   
   // Analyze each category
+  const categoryAlerts = [];
   for (const [categoryId, catData] of categoryMap.entries()) {
     if (catData.amounts.length < 3) continue;
     
@@ -433,10 +483,12 @@ async function analyzeCategories(userId, userData) {
     
     // Compare recent spending to historical average
     if (catStats && recentAvg > catStats.mean * 1.3) {
-      insights.push({
+      const change = (recentAvg / catStats.mean - 1) * 100;
+      categoryAlerts.push({
         type: 'Category Alert',
-        message: `${catData.name} spending is ${((recentAvg / catStats.mean - 1) * 100).toFixed(0)}% higher than your usual pattern this week.`,
-        category: catData.name
+        message: `${catData.name} spending is ${change.toFixed(0)}% higher than your usual pattern this week.`,
+        category: catData.name,
+        change
       });
     }
     
@@ -459,6 +511,11 @@ async function analyzeCategories(userId, userData) {
         });
       }
     }
+  }
+
+  if (categoryAlerts.length > 0) {
+    categoryAlerts.sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
+    insights.push(categoryAlerts[0]);
   }
   
   return insights;
@@ -571,30 +628,42 @@ function analyzeDayOfWeekPattern(transactions) {
   const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   
   transactions.forEach(tx => {
-    const date = new Date(tx.date);
+    const date = toLocalDate(tx.date);
     const day = date.getDay();
-    const existing = dayStats.get(day) || { total: 0, count: 0 };
-    existing.total += tx.amount;
-    existing.count += 1;
+    const existing = dayStats.get(day) || { amounts: [] };
+    existing.amounts.push(tx.amount);
     dayStats.set(day, existing);
   });
   
   if (dayStats.size < 3) return null;
   
-  const dayAverages = Array.from(dayStats.entries()).map(([day, data]) => ({
-    day,
-    name: dayNames[day],
-    avg: data.total / data.count
-  }));
-  
-  dayAverages.sort((a, b) => b.avg - a.avg);
-  
-  if (dayAverages.length >= 2) {
+  const dayAverages = Array.from(dayStats.entries()).map(([day, data]) => {
+    const amounts = data.amounts || [];
+    const sorted = [...amounts].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    const median = sorted.length % 2 === 0
+      ? (sorted[mid - 1] + sorted[mid]) / 2
+      : sorted[mid];
+    const avg = amounts.reduce((sum, v) => sum + v, 0) / (amounts.length || 1);
     return {
-      highDay: dayAverages[0].name,
-      highAvg: dayAverages[0].avg,
-      lowDay: dayAverages[dayAverages.length - 1].name,
-      lowAvg: dayAverages[dayAverages.length - 1].avg
+      day,
+      name: dayNames[day],
+      avg: median || avg,
+      count: amounts.length
+    };
+  });
+  
+  const filtered = dayAverages.filter(d => d.count >= 2);
+  if (filtered.length < 2) return null;
+
+  filtered.sort((a, b) => b.avg - a.avg);
+
+  if (filtered.length >= 2) {
+    return {
+      highDay: filtered[0].name,
+      highAvg: filtered[0].avg,
+      lowDay: filtered[filtered.length - 1].name,
+      lowAvg: filtered[filtered.length - 1].avg
     };
   }
   
@@ -607,7 +676,7 @@ function analyzeDayOfWeekPattern(transactions) {
 function getTransactionsInPeriod(transactions, days) {
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - days);
-  return transactions.filter(tx => new Date(tx.date) >= cutoff);
+  return transactions.filter(tx => toLocalDate(tx.date) >= cutoff);
 }
 
 /**
@@ -616,7 +685,7 @@ function getTransactionsInPeriod(transactions, days) {
 function getCurrentMonthTransactions(transactions) {
   const now = new Date();
   const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-  return transactions.filter(tx => new Date(tx.date) >= firstDay);
+  return transactions.filter(tx => toLocalDate(tx.date) >= firstDay);
 }
 
 /**
@@ -627,7 +696,7 @@ function getPreviousMonthTransactions(transactions) {
   const firstDayCurrent = new Date(now.getFullYear(), now.getMonth(), 1);
   const firstDayPrevious = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   return transactions.filter(tx => {
-    const date = new Date(tx.date);
+    const date = toLocalDate(tx.date);
     return date >= firstDayPrevious && date < firstDayCurrent;
   });
 }

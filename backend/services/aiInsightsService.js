@@ -9,24 +9,56 @@ const { query, run } = require('../database/connection');
 const analyticsService = require('./analyticsService');
 const encryptionService = require('./encryption');
 const mlInsightsService = require('./mlInsightsService');
+const geminiService = require('./geminiService');
 
 /**
  * Generate and store AI insights for a user
  * @param {number} userId - User ID
  * @returns {Promise<Array>} Generated insights
  */
-async function generateInsights(userId) {
+async function generateInsights(userId, mode = 'mixed') {
   const insights = [];
   
-  // Use ML-based insights (learns from user's actual data)
-  try {
-    const mlInsights = await mlInsightsService.generateMLInsights(userId);
-    insights.push(...mlInsights);
-  } catch (error) {
-    console.error('ML insights generation failed, falling back to rule-based:', error);
-    // Fallback to rule-based if ML fails
+  await run('DELETE FROM AI_Insights WHERE user_id = ? AND is_read = 0', [userId]);
+
+  if (mode === 'gemini') {
+    try {
+      const geminiSummary = await geminiService.generateSummary(userId);
+      if (geminiSummary) {
+        insights.push({
+          type: 'AI Summary',
+          message: geminiSummary
+        });
+      }
+    } catch (error) {
+      console.error('Gemini summary failed:', error);
+    }
+  } else if (mode === 'rules') {
     const fallbackInsights = await generateFallbackInsights(userId);
     insights.push(...fallbackInsights);
+  } else {
+    try {
+      const geminiSummary = await geminiService.generateSummary(userId);
+      if (geminiSummary) {
+        insights.push({
+          type: 'AI Summary',
+          message: geminiSummary
+        });
+      }
+    } catch (error) {
+      console.error('Gemini summary failed, continuing:', error);
+    }
+
+    // Use ML-based insights (learns from user's actual data)
+    try {
+      const mlInsights = await mlInsightsService.generateMLInsights(userId);
+      insights.push(...mlInsights);
+    } catch (error) {
+      console.error('ML insights generation failed, falling back to rule-based:', error);
+      // Fallback to rule-based if ML fails
+      const fallbackInsights = await generateFallbackInsights(userId);
+      insights.push(...fallbackInsights);
+    }
   }
   
   // Store insights in database
@@ -284,6 +316,27 @@ async function getUnreadInsights(userId, limit = 10) {
 }
 
 /**
+ * Get a single insight by ID (read or unread)
+ */
+async function getInsightById(userId, insightId) {
+  const rows = await query(
+    'SELECT * FROM AI_Insights WHERE user_id = ? AND insight_id = ? LIMIT 1',
+    [userId, insightId]
+  );
+  if (rows.length === 0) {
+    return null;
+  }
+  const row = rows[0];
+  return {
+    id: row.insight_id,
+    type: row.insight_type,
+    message: row.message,
+    createdAt: row.created_at,
+    isRead: row.is_read === 1
+  };
+}
+
+/**
  * Mark insight as read
  */
 async function markAsRead(userId, insightId) {
@@ -296,5 +349,6 @@ async function markAsRead(userId, insightId) {
 module.exports = {
   generateInsights,
   getUnreadInsights,
+  getInsightById,
   markAsRead
 };

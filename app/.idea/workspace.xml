@@ -7,6 +7,15 @@
     <list default="true" id="763c9a1c-c8b5-402f-a902-12d8670f38ab" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/(tabs)/home.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/(tabs)/home.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/(tabs)/insights.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/(tabs)/insights.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/deviceManager.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/deviceManager.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/editprofile.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/editprofile.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/exports.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/exports.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pop-up.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/pop-up.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/signup.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/signup.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/sub-security.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/sub-security.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../backend/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/../backend/package-lock.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/../package-lock.json" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -27,21 +36,21 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.cidr.known.project.marker&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.readMode.enableVisualFormatting&quot;: &quot;true&quot;,
-    &quot;cf.first.check.clang-format&quot;: &quot;false&quot;,
-    &quot;cidr.known.project.marker&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;feature/report-edit-delete&quot;,
-    &quot;kotlin-language-version-configured&quot;: &quot;true&quot;,
-    &quot;last_opened_file_path&quot;: &quot;C:/Users/ASUS TUF/Documents/Practice Coding/Spentrify/app&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;AndroidSdkUpdater&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.cidr.known.project.marker": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "RunOnceActivity.readMode.enableVisualFormatting": "true",
+    "cf.first.check.clang-format": "false",
+    "cidr.known.project.marker": "true",
+    "git-widget-placeholder": "feature/insights-page-and-spending-ai",
+    "kotlin-language-version-configured": "true",
+    "last_opened_file_path": "C:/Users/ASUS TUF/Documents/Practice Coding/Spentrify/app",
+    "settings.editor.selected.configurable": "AndroidSdkUpdater"
   }
-}</component>
+}]]></component>
   <component name="TaskManager">
     <task active="true" id="Default" summary="Default task">
       <changelist id="763c9a1c-c8b5-402f-a902-12d8670f38ab" name="Changes" comment="" />

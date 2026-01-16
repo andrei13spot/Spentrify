@@ -8,8 +8,9 @@ import React, {
   useCallback,
 } from "react";
 import { Platform } from "react-native";
-import axios from "axios"; // 👈 USE AXIOS
+import axios from "axios";
 import { useAuth } from "./AuthContext";
+import { formatLocalDateKey, parseLocalDate } from "../utils/date";
 
 /* ================= CONFIG ================= */
 
@@ -58,6 +59,7 @@ export type GeneratedReport = {
 type DataContextType = {
   transactions: Transaction[]; // This seems to be your Budgets/Goals list
   allTransactions: any[];      // This is your Actual Expenses list
+  categories: Array<{ category_id: number; category_name: string }>;
   loading: boolean;
 
   // Updated signatures to match Backend Logic
@@ -91,6 +93,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [allTransactions, setAllTransactions] = useState<any[]>([]);
+  const [categories, setCategories] = useState<Array<{ category_id: number; category_name: string }>>([]);
   const [reportsByItemId, setReportsByItemId] = useState<Record<string, GeneratedReport[]>>({});
   const [loading, setLoading] = useState(false);
 
@@ -123,13 +126,20 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       ]);
 
       const budgets = budgetsRes.data.data || [];
-      const userTransactions = txRes.data.data || []; // The actual expenses
       const categories = categoriesRes.data.data || [];
 
       // Create a Map for categories
       const categoryMap = new Map(
         categories.map((c: any) => [c.category_id, c.category_name])
       );
+
+      const userTransactions = (txRes.data.data || []).map((tx: any) => ({
+        ...tx,
+        category:
+          tx.category ||
+          (tx.category_id ? categoryMap.get(tx.category_id) : null) ||
+          "Others",
+      })); // The actual expenses
 
       // --- LOGIC TO MAP BUDGETS & CALCULATE TRENDS ---
       const transformed: Transaction[] = budgets.map((budget: any) => {
@@ -152,11 +162,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
         relatedTx.forEach((tx: any) => {
           // Fallback logic for date
-          const dateStr = tx.transaction_date || tx.created_at || new Date().toISOString();
-          const d = new Date(dateStr);
+          const dateStr = tx.transaction_date || tx.created_at;
+          const d = parseLocalDate(dateStr);
           
           if (d >= sevenDaysAgo) {
-            const key = d.toISOString().split("T")[0];
+            const key = formatLocalDateKey(d);
             dailySpending.set(key, (dailySpending.get(key) || 0) + tx.amount);
           }
         });
@@ -167,7 +177,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         for (let i = 6; i >= 0; i--) {
           const d = new Date(now);
           d.setDate(now.getDate() - i);
-          const key = d.toISOString().split("T")[0];
+          const key = formatLocalDateKey(d);
           cumulative += dailySpending.get(key) || 0;
           trend.push(cumulative);
         }
@@ -181,7 +191,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           name,
           category: name,
           amount: budget.target_amount,
-          date: budget.start_date || now.toISOString().split("T")[0],
+          date: budget.start_date || formatLocalDateKey(now),
           createdAt: budget.created_at || now.toISOString(),
           spent,
           trend,
@@ -190,6 +200,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
       setTransactions(transformed); // Used for Budget Cards
       setAllTransactions(userTransactions); // Used for Recent Transactions List
+      setCategories(categories);
 
     } catch (err) {
       console.error("Fetch error:", err);
@@ -225,8 +236,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         return; 
       }
 
-      // 🔍 DEBUG: Tignan natin kung sino talaga ang user
-      console.log("Current Auth User:", user.id); 
+      console.log("Current auth user:", user.id);
 
       try {
         // Kahit may "default_user" na laman ang transactionData, papalitan natin ito.
@@ -235,7 +245,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           user_id: Number(user.id) // ORCE USE AUTH USER ID
         };
 
-        console.log("🚀 Sending to Backend:", finalData); // Check mo to sa log
+        console.log("Sending to backend:", finalData);
 
         await axios.post(`${API_BASE_URL}/api/transactions`, finalData);
         
@@ -316,6 +326,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     () => ({
       transactions,
       allTransactions,
+      categories,
       loading,
       addTransaction,
       refreshData: fetchData,
@@ -329,6 +340,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     [
       transactions,
       allTransactions,
+      categories,
       loading,
       addTransaction,
       fetchData,

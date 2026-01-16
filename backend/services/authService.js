@@ -88,7 +88,7 @@ async function findUserByEmail(email) {
  * @param {string} password - User password (will be hashed)
  * @returns {Promise<Object>} Created user object
  */
-async function createUser(email, password) {
+async function createUser(email, password, fullName) {
   if (!email || !password) {
     throw new Error('Email and password are required');
   }
@@ -105,8 +105,8 @@ async function createUser(email, password) {
   const passcodeHash = hashPassword(password);
 
   const result = await db.run(
-    'INSERT INTO Users (email_encrypted, passcode_hash) VALUES (?, ?)',
-    [emailEncrypted, passcodeHash]
+    'INSERT INTO Users (email_encrypted, passcode_hash, full_name) VALUES (?, ?, ?)',
+    [emailEncrypted, passcodeHash, fullName ? fullName.trim() : null]
   );
 
   return {
@@ -248,6 +248,10 @@ async function updateUserProfile(userId, updates) {
   if (updates.phone !== undefined) {
     fields.push('phone = ?');
     values.push(updates.phone || null);
+    if (updates.phone && String(updates.phone).trim().length > 0) {
+      fields.push('is_email_verified = ?');
+      values.push(1);
+    }
   }
 
   if (fields.length === 0) {
@@ -264,6 +268,48 @@ async function updateUserProfile(userId, updates) {
   return getUserById(userId);
 }
 
+/**
+ * Update user password
+ * @param {number} userId - User ID
+ * @param {string} currentPassword - Current password
+ * @param {string} newPassword - New password
+ */
+async function updatePassword(userId, currentPassword, newPassword) {
+  if (!userId) {
+    throw new Error('User ID is required');
+  }
+  if (!currentPassword || !newPassword) {
+    throw new Error('Current and new password are required');
+  }
+
+  const rows = await db.query(
+    'SELECT user_id, passcode_hash FROM Users WHERE user_id = ? LIMIT 1',
+    [userId]
+  );
+
+  if (rows.length === 0) {
+    throw new Error('User not found');
+  }
+
+  const user = rows[0];
+  if (!user.passcode_hash) {
+    throw new Error('User account not properly set up');
+  }
+
+  const isValid = comparePassword(currentPassword, user.passcode_hash);
+  if (!isValid) {
+    throw new Error('Invalid current password');
+  }
+
+  const newHash = hashPassword(newPassword);
+  await db.run(
+    'UPDATE Users SET passcode_hash = ? WHERE user_id = ?',
+    [newHash, userId]
+  );
+
+  return true;
+}
+
 module.exports = {
   hashPassword,
   comparePassword,
@@ -272,5 +318,6 @@ module.exports = {
   authenticateUser,
   getUserById,
   updateUserPreferences,
-  updateUserProfile
+  updateUserProfile,
+  updatePassword
 };

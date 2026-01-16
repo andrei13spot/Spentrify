@@ -17,4 +17,7 @@ router.post('/generate', insightsController.generateInsights);
 // PUT /api/insights/:id/read - Mark insight as read
 router.put('/:id/read', insightsController.markAsRead);
 
+// POST /api/insights/detail - Generate detailed insight content
+router.post('/detail', insightsController.getInsightDetail);
+
 module.exports = router;

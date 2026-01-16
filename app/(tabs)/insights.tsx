@@ -16,6 +16,7 @@ import Svg, { Polyline, Circle } from "react-native-svg";
 import ScreenFadeIn from "../../components/ScreenFadeIn";
 import { useData } from "../../context/DataContext";
 import { useAuth } from "../../context/AuthContext";
+import { parseLocalDate } from "../../utils/date";
 
 function getApiBaseUrl(): string {
   if (process.env.EXPO_PUBLIC_API_URL) {
@@ -51,6 +52,7 @@ export default function InsightsScreen() {
   const [historicalAverages, setHistoricalAverages] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [insightMode, setInsightMode] = useState<"gemini" | "rules">("gemini");
 
   // Fetch insights and analytics from backend
   const fetchInsights = async () => {
@@ -58,7 +60,12 @@ export default function InsightsScreen() {
     
     try {
       setLoading(true);
-      
+
+      // Generate insights for selected mode
+      await fetch(`${API_BASE_URL}/api/insights/generate?user_id=${user.id}&mode=${insightMode}`, {
+        method: 'POST'
+      });
+
       // Fetch AI insights
       const insightsRes = await fetch(
         `${API_BASE_URL}/api/insights?user_id=${user.id}&limit=10`
@@ -86,10 +93,6 @@ export default function InsightsScreen() {
         setHistoricalAverages(averagesData.data || null);
       }
       
-      // Generate new insights if needed
-      await fetch(`${API_BASE_URL}/api/insights/generate?user_id=${user.id}`, {
-        method: 'POST'
-      });
     } catch (error) {
       console.error('Failed to fetch insights:', error);
     } finally {
@@ -100,7 +103,7 @@ export default function InsightsScreen() {
 
   useEffect(() => {
     fetchInsights();
-  }, [user?.id]);
+  }, [user?.id, allTransactions.length, insightMode]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -113,8 +116,14 @@ export default function InsightsScreen() {
     const result: InsightItem[] = [];
 
     // Use actual transactions from backend (allTransactions)
-    // If no transactions, return empty
+    // If no transactions, return a helpful card
     if (!allTransactions || allTransactions.length === 0) {
+      result.push({
+        id: "no-data",
+        title: "No insights yet",
+        description: "Add transactions to generate personalized insights.",
+        type: "card",
+      });
       return result;
     }
 
@@ -124,7 +133,7 @@ export default function InsightsScreen() {
 
     // Filter transactions from last 7 days
     const recentTx = allTransactions.filter((tx: any) => {
-      const txDate = new Date(tx.transaction_date || tx.created_at);
+      const txDate = parseLocalDate(tx.transaction_date || tx.created_at);
       return txDate >= sevenDaysAgo;
     });
 
@@ -167,6 +176,71 @@ export default function InsightsScreen() {
         description: `You made ${recentTx.length} transactions in the last 7 days, spending ₱${totalRecentSpend.toLocaleString()}.`,
         type: "card",
       });
+    }
+
+    /* RECENT SUMMARY */
+    if (recentTx.length > 0) {
+      const largestRecent = recentTx.reduce((max: any, tx: any) =>
+        (tx.amount || 0) > (max.amount || 0) ? tx : max
+      );
+      result.push({
+        id: "recent-summary",
+        title: "Recent Activity",
+        description: `Last 7 days: ${recentTx.length} transactions totaling ₱${totalRecentSpend.toLocaleString()}. Largest: ₱${Math.round(
+          largestRecent.amount || 0
+        ).toLocaleString()} at ${largestRecent.merchant_name || "a merchant"}.`,
+        type: "card",
+      });
+    }
+
+    /* TOP CATEGORY */
+    if (allTransactions.length > 0) {
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(now.getDate() - 30);
+      const last30Tx = allTransactions.filter((tx: any) => {
+        const txDate = parseLocalDate(tx.transaction_date || tx.created_at);
+        return txDate >= thirtyDaysAgo;
+      });
+      const categoryTotals = new Map<string, number>();
+      last30Tx.forEach((tx: any) => {
+        const name = tx.category || "Others";
+        categoryTotals.set(name, (categoryTotals.get(name) || 0) + (tx.amount || 0));
+      });
+      let topCategory: { name: string; total: number } | null = null;
+      for (const [name, total] of categoryTotals.entries()) {
+        if (!topCategory || total > topCategory.total) {
+          topCategory = { name, total };
+        }
+      }
+      if (topCategory) {
+        result.push({
+          id: "top-category",
+          title: "Top Category (30 days)",
+          description: `Your top category is ${topCategory.name} with ₱${Math.round(
+            topCategory.total
+          ).toLocaleString()} in the last 30 days.`,
+          type: "card",
+        });
+      }
+    }
+
+    if (insightMode === "gemini") {
+      backendInsights.forEach((insight) => {
+        const title =
+          insight.type && insight.type !== "AI Summary"
+            ? insight.type
+            : "Gemini Summary";
+        result.push({
+          id: `backend-${insight.id}`,
+          title,
+          description: insight.message,
+          type: "card",
+        });
+      });
+      if (result.length > 0) {
+        return result;
+      }
+      // Fallback to rule-based insights if Gemini returns nothing
     }
 
     /* UNDER BUDGET / SPENDING PACE */
@@ -249,8 +323,8 @@ export default function InsightsScreen() {
         if (txs.length >= 2) {
           // Sort by date
           txs.sort((a: any, b: any) => {
-            const dateA = new Date(a.transaction_date || a.created_at);
-            const dateB = new Date(b.transaction_date || b.created_at);
+            const dateA = parseLocalDate(a.transaction_date || a.created_at);
+            const dateB = parseLocalDate(b.transaction_date || b.created_at);
             return dateB.getTime() - dateA.getTime();
           });
           
@@ -299,7 +373,7 @@ export default function InsightsScreen() {
     });
 
     // Add backend AI insights
-    backendInsights.forEach((insight, index) => {
+    backendInsights.forEach((insight) => {
       const isSuccess = insight.type === 'Projection' || insight.type === 'Habit';
       result.push({
         id: `backend-${insight.id}`,
@@ -329,6 +403,40 @@ export default function InsightsScreen() {
         <View style={styles.header}>
           <Text style={styles.title}>Insights</Text>
           <Text style={styles.subtitle}>Analyze your spending habits</Text>
+        </View>
+        <View style={styles.modeToggle}>
+          <TouchableOpacity
+            style={[
+              styles.modeButton,
+              insightMode === "gemini" && styles.modeButtonActive,
+            ]}
+            onPress={() => setInsightMode("gemini")}
+          >
+            <Text
+              style={[
+                styles.modeButtonText,
+                insightMode === "gemini" && styles.modeButtonTextActive,
+              ]}
+            >
+              Gemini
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.modeButton,
+              insightMode === "rules" && styles.modeButtonActive,
+            ]}
+            onPress={() => setInsightMode("rules")}
+          >
+            <Text
+              style={[
+                styles.modeButtonText,
+                insightMode === "rules" && styles.modeButtonTextActive,
+              ]}
+            >
+              Rule-based
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {loading && insights.length === 0 ? (
@@ -496,6 +604,31 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#6B7280",
     marginTop: 4,
+  },
+  modeToggle: {
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 12,
+  },
+  modeButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    backgroundColor: "#FFFFFF",
+  },
+  modeButtonActive: {
+    backgroundColor: "#3B82F6",
+    borderColor: "#3B82F6",
+  },
+  modeButtonText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#6B7280",
+  },
+  modeButtonTextActive: {
+    color: "#FFFFFF",
   },
 
   card: {

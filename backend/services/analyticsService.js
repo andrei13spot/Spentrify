@@ -8,6 +8,13 @@
 const { query } = require('../database/connection');
 const encryptionService = require('./encryption');
 
+function formatDateKey(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 /**
  * Get spending analytics for a user
  * @param {number} userId - User ID
@@ -183,7 +190,7 @@ async function getWeeklyTrend(userId) {
     ORDER BY t.transaction_date ASC
   `;
   
-  const rows = await query(sql, [userId, fourteenDaysAgo.toISOString().split('T')[0]]);
+  const rows = await query(sql, [userId, formatDateKey(fourteenDaysAgo)]);
   
   // Group by date and decrypt
   const dailyMap = new Map();
@@ -200,7 +207,7 @@ async function getWeeklyTrend(userId) {
   for (let i = 6; i >= 0; i--) {
     const d = new Date(now);
     d.setDate(now.getDate() - i);
-    const dateKey = d.toISOString().split('T')[0];
+    const dateKey = formatDateKey(d);
     const amount = dailyMap.get(dateKey) || 0;
     currentWeek.push({
       date: dateKey,
@@ -215,7 +222,7 @@ async function getWeeklyTrend(userId) {
   for (let i = 13; i >= 7; i--) {
     const d = new Date(now);
     d.setDate(now.getDate() - i);
-    const dateKey = d.toISOString().split('T')[0];
+    const dateKey = formatDateKey(d);
     const amount = dailyMap.get(dateKey) || 0;
     previousWeek.push({
       date: dateKey,
@@ -265,7 +272,7 @@ async function getHistoricalAverages(userId) {
     ORDER BY t.transaction_date ASC
   `;
   
-  const rows = await query(sql, [userId, sixtyDaysAgo.toISOString().split('T')[0]]);
+  const rows = await query(sql, [userId, formatDateKey(sixtyDaysAgo)]);
   
   if (rows.length === 0) {
     return {

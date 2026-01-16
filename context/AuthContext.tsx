@@ -22,8 +22,11 @@ type AuthContextType = {
   isAuthenticated: boolean;
   isLoading: boolean;
 
-  signupWithEmail: (email: string, password: string) => Promise<void>;
+  signupWithEmail: (email: string, password: string, fullName?: string) => Promise<void>;
   loginWithEmail: (email: string, password: string) => Promise<void>;
+  loginWithGoogle: () => Promise<void>;
+  loginWithFacebook: () => Promise<void>;
+  loginWithApple: () => Promise<void>;
   setAuthUser: (user: AuthUser) => Promise<void>; 
   logout: () => Promise<void>;
 };
@@ -45,6 +48,14 @@ function getApiBaseUrl(): string {
 }
 
 const API_BASE_URL = getApiBaseUrl();
+
+function extractErrorMessage(data: any, fallback: string) {
+  if (!data) return fallback;
+  if (typeof data.error === "string") return data.error;
+  if (data.error && typeof data.error.message === "string") return data.error.message;
+  if (typeof data.message === "string") return data.message;
+  return fallback;
+}
 
 /* ================= PROVIDER ================= */
 
@@ -97,7 +108,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const data = await response.json();
 
-      if (!response.ok) throw new Error(data.error || "Login failed");
+      if (!response.ok) throw new Error(extractErrorMessage(data, "Login failed"));
       if (!data.success || !data.data) throw new Error("Invalid response");
 
       const newUser = {
@@ -114,20 +125,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [updateUserId]); // Dependency: updateUserId
 
+  const loginWithGoogle = useCallback(async () => {
+    throw new Error("Google sign-in is not configured yet.");
+  }, []);
+
+  const loginWithFacebook = useCallback(async () => {
+    throw new Error("Facebook sign-in is not configured yet.");
+  }, []);
+
+  const loginWithApple = useCallback(async () => {
+    throw new Error("Apple sign-in is not configured yet.");
+  }, []);
+
   // Wrapped in useCallback
-  const signupWithEmail = useCallback(async (email: string, password: string) => {
+  const signupWithEmail = useCallback(async (email: string, password: string, fullName?: string) => {
     if (!email || !password) throw new Error("Required fields missing");
     
     try {
       const response = await fetch(`${API_BASE_URL}/api/auth/signup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+        body: JSON.stringify({ 
+          email: email.trim().toLowerCase(), 
+          password,
+          full_name: fullName?.trim() || null
+        }),
       });
 
       const data = await response.json();
 
-      if (!response.ok) throw new Error(data.error || "Signup failed");
+      if (!response.ok) throw new Error(extractErrorMessage(data, "Signup failed"));
       if (!data.success || !data.data) throw new Error("Invalid response");
 
       const newUser = {
@@ -166,6 +193,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isLoading,
     signupWithEmail,
     loginWithEmail,
+    loginWithGoogle,
+    loginWithFacebook,
+    loginWithApple,
     setAuthUser, 
     logout,
   }), [
@@ -174,6 +204,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isLoading, 
     signupWithEmail, 
     loginWithEmail, 
+    loginWithGoogle,
+    loginWithFacebook,
+    loginWithApple,
     setAuthUser, 
     logout
   ]);

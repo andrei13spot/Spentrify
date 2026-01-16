@@ -9,9 +9,22 @@ import {
   Text, TextInput, TouchableOpacity,
   View
 } from 'react-native';
-import { updatePassword } from './auth-store';
+import { useAuth } from '../context/AuthContext';
+
+function getApiBaseUrl(): string {
+  if (process.env.EXPO_PUBLIC_API_URL) {
+    return process.env.EXPO_PUBLIC_API_URL;
+  }
+  if (Platform.OS === 'android') {
+    return "http://10.0.2.2:3000";
+  }
+  return "http://localhost:3000";
+}
+
+const API_BASE_URL = getApiBaseUrl();
 
 export default function SubSecurityScreen() {
+  const { user } = useAuth();
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -19,7 +32,7 @@ export default function SubSecurityScreen() {
 
   const [showPassword, setShowPassword] = useState(false);
 
-  const handleUpdate = () => {
+  const handleUpdate = async () => {
     if (!currentPassword || !newPassword || !confirmPassword) {
       Alert.alert("Error", "Please fill in all fields.");
       return;
@@ -28,12 +41,34 @@ export default function SubSecurityScreen() {
       Alert.alert("Error", "New passwords do not match.");
       return;
     }
-    
-    const success = updatePassword(currentPassword, newPassword);
-    if (success) {
+
+    if (!user?.id) {
+      Alert.alert("Error", "User not identified. Please login again.");
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/auth/password?user_id=${user.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          current_password: currentPassword,
+          new_password: newPassword,
+        }),
+      });
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        const message = data.error || "Failed to update password.";
+        Alert.alert("Error", message);
+        return;
+      }
+
       Alert.alert("Success", "Password updated successfully!", [
         { text: "OK", onPress: () => router.back() }
       ]);
+    } catch (error) {
+      Alert.alert("Error", "Failed to update password. Please try again.");
     }
   };
 

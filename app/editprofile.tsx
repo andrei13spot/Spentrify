@@ -41,7 +41,6 @@ export default function EditProfileScreen() {
   const [phone, setPhone] = useState('');
 
   // Account info (read-only)
-  const [userId, setUserId] = useState('');
   const [dateJoined, setDateJoined] = useState('');
   const [isEmailVerified, setIsEmailVerified] = useState(false);
 
@@ -74,8 +73,7 @@ export default function EditProfileScreen() {
           setName(userData.full_name || '');
           setEmail(userData.email || '');
           setPhone(userData.phone || '');
-          setUserId(String(userData.user_id));
-          setIsEmailVerified(userData.is_email_verified || false);
+          setIsEmailVerified(Boolean(userData.is_email_verified) || Boolean(userData.phone));
           
           // Format date joined
           if (userData.created_at) {
@@ -223,15 +221,6 @@ export default function EditProfileScreen() {
         <View style={styles.card}>
           <View style={styles.readOnlyRow}>
             <View>
-              <Text style={styles.label}>User ID</Text>
-              <Text style={styles.readOnlyValue}>{userId || 'N/A'}</Text>
-            </View>
-            <Ionicons name="lock-closed-outline" size={16} color="#ccc" />
-          </View>
-          <View style={styles.divider} />
-
-          <View style={styles.readOnlyRow}>
-            <View>
               <Text style={styles.label}>Member Since</Text>
               <Text style={styles.readOnlyValue}>{dateJoined || 'N/A'}</Text>
             </View>
@@ -251,7 +240,7 @@ export default function EditProfileScreen() {
         </View>
 
         <Text style={styles.helperText}>
-          User ID and Account Status cannot be changed. Contact support for assistance.
+          Account Status cannot be changed. Contact support for assistance.
         </Text>
 
         <View style={{height: 40}} />

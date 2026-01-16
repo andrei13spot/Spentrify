@@ -19,7 +19,10 @@ const analyticsService = require('../services/analyticsService');
 async function getAnalytics(req, res, next) {
   try {
     // TODO: Extract user_id from authentication token
-    const userId = parseInt(req.query.user_id) || 1;
+    const userId = parseInt(req.query.user_id);
+    if (Number.isNaN(userId)) {
+      return res.status(400).json({ success: false, error: 'User ID is required' });
+    }
     const period = req.query.period;
     const categoryId = req.query.category_id ? parseInt(req.query.category_id) : undefined;
     
@@ -44,7 +47,10 @@ async function getAnalytics(req, res, next) {
 async function getSummary(req, res, next) {
   try {
     // TODO: Extract user_id from authentication token
-    const userId = parseInt(req.query.user_id) || 1;
+    const userId = parseInt(req.query.user_id);
+    if (Number.isNaN(userId)) {
+      return res.status(400).json({ success: false, error: 'User ID is required' });
+    }
     const period = req.query.period;
     
     const summary = await analyticsService.getSpendingSummary(userId, period);
@@ -65,7 +71,10 @@ async function getSummary(req, res, next) {
 async function getByCategory(req, res, next) {
   try {
     // TODO: Extract user_id from authentication token
-    const userId = parseInt(req.query.user_id) || 1;
+    const userId = parseInt(req.query.user_id);
+    if (Number.isNaN(userId)) {
+      return res.status(400).json({ success: false, error: 'User ID is required' });
+    }
     const period = req.query.period;
     
     const breakdown = await analyticsService.getSpendingByCategory(userId, period);

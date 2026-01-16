@@ -53,7 +53,7 @@ async function login(req, res, next) {
  */
 async function signup(req, res, next) {
   try {
-    const { email, password } = req.body;
+    const { email, password, full_name } = req.body;
 
     if (!email || !password) {
       return res.status(400).json({
@@ -70,7 +70,7 @@ async function signup(req, res, next) {
       });
     }
 
-    const user = await authService.createUser(email, password);
+    const user = await authService.createUser(email, password, full_name);
 
     res.status(201).json({
       success: true,
@@ -184,10 +184,65 @@ async function updateProfile(req, res, next) {
   }
 }
 
+/**
+ * Update user password
+ * PUT /api/auth/password?user_id=xxx
+ * Body: { current_password: string, new_password: string }
+ */
+async function updatePassword(req, res, next) {
+  try {
+    const userId = Number(req.query.user_id);
+    const { current_password, new_password } = req.body;
+
+    if (Number.isNaN(userId)) {
+      return res.status(400).json({
+        success: false,
+        error: 'User ID is required'
+      });
+    }
+
+    if (!current_password || !new_password) {
+      return res.status(400).json({
+        success: false,
+        error: 'Current and new password are required'
+      });
+    }
+
+    if (new_password.length < 6) {
+      return res.status(400).json({
+        success: false,
+        error: 'Password must be at least 6 characters long'
+      });
+    }
+
+    await authService.updatePassword(userId, current_password, new_password);
+
+    res.json({
+      success: true,
+      message: 'Password updated successfully'
+    });
+  } catch (error) {
+    if (error.message && error.message.includes('Invalid current password')) {
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid current password'
+      });
+    }
+    if (error.message && error.message.includes('User not found')) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found'
+      });
+    }
+    next(error);
+  }
+}
+
 module.exports = {
   login,
   signup,
   getCurrentUser,
   updatePreferences,
-  updateProfile
+  updateProfile,
+  updatePassword
 };

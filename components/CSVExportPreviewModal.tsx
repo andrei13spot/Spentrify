@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import * as FileSystem from "expo-file-system/legacy";
+import * as FileSystem from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import React, { useState } from "react";
 import {
@@ -11,6 +11,7 @@ import {
   StyleSheet,
   Text,
   View,
+  Platform,
 } from "react-native";
 
 /* ================= TYPES ================= */
@@ -66,23 +67,54 @@ export default function CSVExportPreviewModal({
     try {
       setDownloading(true);
 
-      // @ts-ignore - documentDirectory exists at runtime
-      const documentDir = FileSystem.documentDirectory || '';
-      const fileUri = documentDir + exportData.fileName;
+      // Android: Save to user-selected folder (Downloads, Drive, etc.)
+      if (Platform.OS === "android" && FileSystem.StorageAccessFramework) {
+        let permissions;
+        try {
+          permissions =
+            await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+        } catch (error) {
+          permissions = null;
+        }
+        if (!permissions?.granted) {
+          Alert.alert(
+            "Permission Needed",
+            "Please allow access to save the export file. You can also use Share to send the file."
+          );
+          return;
+        }
 
-      // Write file to device storage
+        const fileUri =
+          await FileSystem.StorageAccessFramework.createFileAsync(
+            permissions.directoryUri,
+            exportData.fileName,
+            "text/csv"
+          );
+        await FileSystem.writeAsStringAsync(fileUri, exportData.csvContent);
+
+        Alert.alert(
+          "Download Complete",
+          `Export saved to your selected folder as ${exportData.fileName}.`,
+          [{ text: "OK" }]
+        );
+        return;
+      }
+
+      // iOS / fallback: save inside app document directory
+      const documentDir = FileSystem.documentDirectory || "";
+      const fileUri = documentDir + exportData.fileName;
       await FileSystem.writeAsStringAsync(fileUri, exportData.csvContent);
 
       Alert.alert(
         "Download Complete",
-        `Export saved as ${exportData.fileName}`,
+        `Export saved inside the app as ${exportData.fileName}. Use Share to open it or send it.`,
         [{ text: "OK" }]
       );
     } catch (error) {
       console.error("Error downloading export:", error);
       Alert.alert(
         "Download Failed",
-        "Unable to download the export. Please try again.",
+        "Unable to download the export. Please try Share instead.",
         [{ text: "OK" }]
       );
     } finally {
@@ -96,11 +128,8 @@ export default function CSVExportPreviewModal({
     try {
       setSharing(true);
 
-      // @ts-ignore - documentDirectory exists at runtime
-      const documentDir = FileSystem.documentDirectory || '';
+      const documentDir = FileSystem.documentDirectory || "";
       const fileUri = documentDir + exportData.fileName;
-
-      // Write file to device storage
       await FileSystem.writeAsStringAsync(fileUri, exportData.csvContent);
 
       // Check if sharing is available

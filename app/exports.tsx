@@ -213,11 +213,11 @@ export default function ExportsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* UC-6: ITR SUPPORT */}
+        {/* ITR SUPPORT */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Ionicons name="document-text-outline" size={24} color={THEME.primary} />
-            <Text style={styles.sectionTitle}>ITR Support (UC-6)</Text>
+            <Text style={styles.sectionTitle}>ITR Support</Text>
           </View>
           <Text style={styles.sectionDescription}>
             Export expenses grouped by deductible categories for Philippine Income Tax Return (ITR) filing.
@@ -247,11 +247,11 @@ export default function ExportsScreen() {
           </Pressable>
         </View>
 
-        {/* UC-7: REIMBURSEMENT MODE */}
+        {/* REIMBURSEMENT MODE */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Ionicons name="receipt-outline" size={24} color={THEME.success} />
-            <Text style={styles.sectionTitle}>Reimbursement Mode (UC-7)</Text>
+            <Text style={styles.sectionTitle}>Reimbursement Mode</Text>
           </View>
           <Text style={styles.sectionDescription}>
             Export all reimbursable expenses with receipt information for HR/employer submission.

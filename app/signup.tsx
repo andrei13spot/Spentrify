@@ -135,7 +135,7 @@ export default function SignUpScreen() {
        * Creates user account in database
        * This saves the user to the database with encrypted email and hashed password
        */
-      await signupWithEmail(email, password);
+      await signupWithEmail(email, password, fullName);
 
       // ✅ SIGNUP SUCCESSFUL → Show success modal
       // User account is now saved in database

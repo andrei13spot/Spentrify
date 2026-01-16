@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext'; 
+import { toLocalDateKey } from '../utils/date';
 
 // Food=1, Bills=4/5/6 (Electricity/Water), Shopping=9, etc.
 const CATEGORY_MAPPING: Record<number, string> = {
@@ -80,7 +81,7 @@ export default function PopUpScreen() {
         amount: parseFloat(finalAmount),
         merchant_name: params.merchant || 'Unknown Merchant',
         description: (selected === 'Other' && customCategory) ? customCategory : (params.merchant || 'Manual Transaction'),
-        transaction_date: params.date || new Date().toISOString(),
+        transaction_date: toLocalDateKey(params.date as string | undefined),
         category_id: categoryIdToSave || null, 
         is_manual: 0
       };

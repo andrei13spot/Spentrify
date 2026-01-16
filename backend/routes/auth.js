@@ -23,4 +23,7 @@ router.put('/preferences', authController.updatePreferences);
 // PUT /api/auth/profile - Update user profile
 router.put('/profile', authController.updateProfile);
 
+// PUT /api/auth/password - Update user password
+router.put('/password', authController.updatePassword);
+
 module.exports = router;

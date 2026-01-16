@@ -18,7 +18,7 @@ exports.createGoal = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Missing fields' });
     }
     const newGoal = await goalsService.createGoal(user_id, { name, amount, currentSavings, date });
-    res.json({ success: true, data: newGoal });
+    res.json({ success: true, data: newGoal, message: 'Goal saved successfully' });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }

@@ -13,13 +13,14 @@ import {
   Alert // Added Alert for safety
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import axios from 'axios'; 
 
 import TransactionConfirmedModal from "../../components/TransactionConfirmedModal";
 import TransactionErrorModal from "../../components/TransactionErrorModal";
 import { useData } from "../../context/DataContext";
 import { useNotifications } from "../../context/NotificationContext";
 import { useAuth } from "../../context/AuthContext"; // 👈 1. IMPORT USEAUTH
+import { formatLocalDateKey } from "../../utils/date";
+import { useGoalsStore } from "../goals-store";
 
 /* ================= DATA ================= */
 
@@ -63,7 +64,8 @@ export default function AddTransaction() {
 
   /* ================= GLOBAL DATA ================= */
   const { addTransaction } = useData();
-  const { user } = useAuth(); // 👈 2. GET CURRENT USER
+  const { user } = useAuth();
+  const { addGoal } = useGoalsStore();
 
   /* ================= MODAL STATE ================= */
   const [showModal, setShowModal] = useState(false);
@@ -112,7 +114,7 @@ export default function AddTransaction() {
   /* ================= CONFIRM  ================= */
 
   const handleConfirmTransaction = async () => {
-    // 🛑 SAFETY CHECK: USER MUST BE LOGGED IN
+    // Safety check: user must be logged in
     if (!user || !user.id) {
         Alert.alert("Error", "You must be logged in to save a transaction.");
         return;
@@ -149,54 +151,42 @@ export default function AddTransaction() {
 
     try {
         // 3. BACKEND INTEGRATION
-        if (!isGoal) {
+        if (isGoal) {
+            await addGoal(user.id, {
+              name: details,
+              amount: amount,
+              currentSavings: "0",
+              date
+            });
+        } else {
             const dbCategoryId = CATEGORY_MAP[category] || 13;
 
             const dateParts = date.split('/'); 
-            const isoDate = new Date(
-                parseInt(dateParts[2]), 
-                parseInt(dateParts[0]) - 1, 
+            const localDate = formatLocalDateKey(
+              new Date(
+                parseInt(dateParts[2]),
+                parseInt(dateParts[0]) - 1,
                 parseInt(dateParts[1])
-            ).toISOString();
+              )
+            );
 
-            // 👇 3. USE DYNAMIC USER ID HERE
             const payload = {
-                user_id: Number(user.id), // 👈 FIX: User 2 na ang gagamitin!
                 amount: parseFloat(amount),
                 merchant_name: details, 
                 description: details,
                 category_id: dbCategoryId,
-                transaction_date: isoDate,
+                transaction_date: localDate,
                 source_type: 'Manual',
                 is_manual: 1
             };
 
-            console.log("🚀 Saving to Backend for User:", user.id);
+            console.log("Saving to backend for user:", user.id);
 
-            // SEND TO BACKEND
-            // Note: Use your API URL config or localhost logic here
-            await axios.post('http://10.0.2.2:3000/api/transactions', payload);
-            console.log("✅ Saved to Database!");
+            await addTransaction(payload);
+            console.log("Saved to database.");
         }
 
-        // 4. Update Context & Notifications
-        const newTransaction = {
-            id: Date.now().toString(),
-            name: details,
-            category: isGoal ? "goal" : category,
-            amount: Number(amount),
-            date,
-            createdAt: now.toISOString(),
-            spent: 0,
-            expenses: [],
-            isReimbursable: isReimbursable,
-        };
-
-        // NOTE: If addTransaction in context ALSO calls API, 
-        // you might want to comment this out to avoid double saving. 
-        // But for now, let's keep it to update the UI instantly.
-        addTransaction(newTransaction);
-
+        // 4. Update Notifications
         addNotification({
             title: isGoal ? "Goal Added" : "Transaction Confirmed",
             message: `₱${amount} • ${isGoal ? "Goal" : category}\n${details}`,
