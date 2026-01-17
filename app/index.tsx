@@ -15,9 +15,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import TransactionErrorModal from "../components/TransactionErrorModal";
-import { fonts } from "../constants/fonts";
 import { useAuth } from "../context/AuthContext";
-
 
 /* ================= SCREEN ================= */
 
@@ -55,14 +53,7 @@ export default function LoginScreen() {
 
     try {
       setLoading(true);
-
-      /**
-       * 🔌 BACKEND READY
-       * POST /auth/login
-       */
       await loginWithEmail(email, password);
-
-      // ✅ EMAIL LOGIN IS CONFIRMED → SAFE TO REDIRECT
       router.replace("/(tabs)/home");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Login failed. Please try again.";
@@ -80,17 +71,7 @@ export default function LoginScreen() {
 
     try {
       setLoading(true);
-
-      /**
-       * 🔌 GOOGLE OAUTH FLOW
-       * 1. Redirect to Google
-       * 2. Backend validates token
-       * 3. Backend calls auth.login(user)
-       * 4. AuthContext handles routing later
-       */
       await loginWithGoogle();
-
-      // If successful, redirect to home
       router.replace("/(tabs)/home");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Google login failed.";
@@ -108,14 +89,7 @@ export default function LoginScreen() {
 
     try {
       setLoading(true);
-
-      /**
-       * 🔌 FACEBOOK OAUTH FLOW
-       * Backend/AuthContext controls routing
-       */
       await loginWithFacebook();
-
-      // If successful, redirect to home
       router.replace("/(tabs)/home");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Facebook login failed.";
@@ -133,14 +107,7 @@ export default function LoginScreen() {
 
     try {
       setLoading(true);
-
-      /**
-       * 🔌 APPLE SIGN-IN FLOW
-       * Backend/AuthContext controls routing
-       */
       await loginWithApple();
-
-      // If successful, redirect to home
       router.replace("/(tabs)/home");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Apple login failed.";
@@ -163,8 +130,13 @@ export default function LoginScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.card}>
-            {/* Title */}
-            <Text style={styles.title}>Welcome Back</Text>
+            
+            {/* LOGO IMAGE */}
+            <Image 
+              source={require("../assets/images/logos/name logo.png")}
+              style={styles.logo}
+            />
+            
             <Text style={styles.subtitle}>
               Sign in to continue tracking your spending
             </Text>
@@ -302,12 +274,13 @@ const styles = StyleSheet.create({
     width: "100%",
   },
 
-  title: {
-    fontSize: 26,
-    fontWeight: "700",
-    textAlign: "center",
-    color: "#111827",
-    marginBottom: 6,
+  // --- FIXED LOGO SPACING ---
+  logo: {
+    width: "100%",      
+    height: 100,        // Reduced height to remove empty space
+    alignSelf: "center",
+    resizeMode: "contain",
+    marginBottom: 0,    // Removed margin to bring text closer
   },
 
   subtitle: {
@@ -315,6 +288,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
     color: "#6B7280",
     marginBottom: 24,
+    marginTop: 0,      // Ensure no top margin pushes it down
   },
 
   form: {
