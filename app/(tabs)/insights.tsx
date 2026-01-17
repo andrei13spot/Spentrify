@@ -52,7 +52,6 @@ export default function InsightsScreen() {
   const [historicalAverages, setHistoricalAverages] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [insightMode, setInsightMode] = useState<"gemini" | "rules">("gemini");
 
   // Fetch insights and analytics from backend
   const fetchInsights = async () => {
@@ -61,8 +60,8 @@ export default function InsightsScreen() {
     try {
       setLoading(true);
 
-      // Generate insights for selected mode
-      await fetch(`${API_BASE_URL}/api/insights/generate?user_id=${user.id}&mode=${insightMode}`, {
+      // Generate combined insights (Gemini + rules/ML)
+      await fetch(`${API_BASE_URL}/api/insights/generate?user_id=${user.id}&mode=hybrid`, {
         method: 'POST'
       });
 
@@ -103,7 +102,7 @@ export default function InsightsScreen() {
 
   useEffect(() => {
     fetchInsights();
-  }, [user?.id, allTransactions.length, insightMode]);
+  }, [user?.id, allTransactions.length]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -222,25 +221,6 @@ export default function InsightsScreen() {
           type: "card",
         });
       }
-    }
-
-    if (insightMode === "gemini") {
-      backendInsights.forEach((insight) => {
-        const title =
-          insight.type && insight.type !== "AI Summary"
-            ? insight.type
-            : "Gemini Summary";
-        result.push({
-          id: `backend-${insight.id}`,
-          title,
-          description: insight.message,
-          type: "card",
-        });
-      });
-      if (result.length > 0) {
-        return result;
-      }
-      // Fallback to rule-based insights if Gemini returns nothing
     }
 
     /* UNDER BUDGET / SPENDING PACE */
@@ -404,41 +384,6 @@ export default function InsightsScreen() {
           <Text style={styles.title}>Insights</Text>
           <Text style={styles.subtitle}>Analyze your spending habits</Text>
         </View>
-        <View style={styles.modeToggle}>
-          <TouchableOpacity
-            style={[
-              styles.modeButton,
-              insightMode === "gemini" && styles.modeButtonActive,
-            ]}
-            onPress={() => setInsightMode("gemini")}
-          >
-            <Text
-              style={[
-                styles.modeButtonText,
-                insightMode === "gemini" && styles.modeButtonTextActive,
-              ]}
-            >
-              Gemini
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.modeButton,
-              insightMode === "rules" && styles.modeButtonActive,
-            ]}
-            onPress={() => setInsightMode("rules")}
-          >
-            <Text
-              style={[
-                styles.modeButtonText,
-                insightMode === "rules" && styles.modeButtonTextActive,
-              ]}
-            >
-              Rule-based
-            </Text>
-          </TouchableOpacity>
-        </View>
-
         {loading && insights.length === 0 ? (
           <View style={styles.emptyState}>
             <ActivityIndicator size="large" color="#3B82F6" />
@@ -605,32 +550,6 @@ const styles = StyleSheet.create({
     color: "#6B7280",
     marginTop: 4,
   },
-  modeToggle: {
-    flexDirection: "row",
-    gap: 10,
-    marginBottom: 12,
-  },
-  modeButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    backgroundColor: "#FFFFFF",
-  },
-  modeButtonActive: {
-    backgroundColor: "#3B82F6",
-    borderColor: "#3B82F6",
-  },
-  modeButtonText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#6B7280",
-  },
-  modeButtonTextActive: {
-    color: "#FFFFFF",
-  },
-
   card: {
     backgroundColor: "#FFFFFF",
     borderRadius: 16,

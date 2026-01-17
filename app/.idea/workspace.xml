@@ -5,17 +5,8 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="763c9a1c-c8b5-402f-a902-12d8670f38ab" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/(tabs)/home.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/(tabs)/home.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/(tabs)/insights.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/(tabs)/insights.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/deviceManager.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/deviceManager.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../README.md" beforeDir="false" afterPath="$PROJECT_DIR$/../README.md" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/editprofile.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/editprofile.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/exports.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/exports.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/pop-up.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/pop-up.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/signup.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/signup.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/sub-security.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/sub-security.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../backend/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/../backend/package-lock.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/../package-lock.json" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -45,7 +36,7 @@
     "RunOnceActivity.readMode.enableVisualFormatting": "true",
     "cf.first.check.clang-format": "false",
     "cidr.known.project.marker": "true",
-    "git-widget-placeholder": "feature/insights-page-and-spending-ai",
+    "git-widget-placeholder": "feature/notifications-page",
     "kotlin-language-version-configured": "true",
     "last_opened_file_path": "C:/Users/ASUS TUF/Documents/Practice Coding/Spentrify/app",
     "settings.editor.selected.configurable": "AndroidSdkUpdater"

@@ -149,48 +149,11 @@ export default function SettingsScreen() {
   /* ================= UPDATE PREFERENCES ================= */
 
   const togglePreference = async (key: "cloudSync" | "biometrics") => {
-    // Biometrics is local-only, no backend call needed
-    if (key === "biometrics") {
-      setPreferences((prev) => ({
-        ...prev,
-        [key]: !prev[key],
-      }));
-      return;
-    }
-
-    // Cloud Sync needs to be saved to backend
-    if (key === "cloudSync" && user?.id) {
-      try {
-        setSaving(true);
-        const newValue = !preferences.cloudSync;
-
-        const response = await fetch(`${API_BASE_URL}/api/auth/preferences?user_id=${user.id}`, {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            is_cloud_sync_enabled: newValue,
-          }),
-        });
-
-        const data = await response.json();
-
-        if (data.success) {
-          setPreferences((prev) => ({
-            ...prev,
-            cloudSync: newValue,
-          }));
-        } else {
-          Alert.alert("Error", "Failed to update cloud sync preference. Please try again.");
-        }
-      } catch (error) {
-        console.error('Error updating preferences:', error);
-        Alert.alert("Error", "Failed to update cloud sync preference. Please try again.");
-      } finally {
-        setSaving(false);
-      }
-    }
+    const label = key === "cloudSync" ? "Cloud Sync" : "Biometric Lock";
+    Alert.alert(
+      "Coming Soon",
+      `${label} is not available yet. This feature will be added in a future update.`
+    );
   };
 
   const handleLogout = () => {
