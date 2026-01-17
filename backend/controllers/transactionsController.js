@@ -113,7 +113,6 @@ async function createTransaction(req, res, next) {
   try {
     const { user_id } = req.body; 
     
-    // 👇 1. REQUIRE VALID USER ID
     const finalUserId = Number(user_id);
 
     if (Number.isNaN(finalUserId) || finalUserId <= 0) {
@@ -127,13 +126,12 @@ async function createTransaction(req, res, next) {
       return res.status(400).json({ success: false, error: 'User ID not found' });
     }
 
-    // 2. Ensure User Exists (Gamitin ang finalUserId)
     await run(`INSERT OR IGNORE INTO Users (user_id, email_encrypted, passcode_hash) VALUES (?, 'default_email', 'pass123')`, [finalUserId]);
     
-    // 3. Ensure Category Exists
+
     await run(`INSERT OR IGNORE INTO Categories (category_id, category_name, is_itr_deductible) VALUES (?, 'System Category', 0)`, [catId]);
 
-    // 4. Clean Data
+    // Clean Data
     const cleanData = {
       user_id: finalUserId, 
       category_id: Number(catId),
@@ -151,16 +149,22 @@ async function createTransaction(req, res, next) {
       return res.status(400).json({ success: false, error: { message: 'Amount must be a positive number' } });
     }
 
-    // 5. Save to Database
+    // Save to Database
     const transaction = await transactionService.createTransaction(cleanData);
 
     console.log(`SUCCESS: Transaction Saved for User ${finalUserId}!`);
 
-    // 6. Trigger Notification
+    // Trigger Notification
     try {
       const notifTitle = "Transaction Confirmed";
-      const notifMessage = `PHP ${cleanData.amount} • ${cleanData.description}`;
-      await notificationsService.createNotification(finalUserId, notifTitle, notifMessage);
+      const notifMessage = `PHP ${cleanData.amount.toLocaleString()} • ${cleanData.description}`;
+      
+      if (notificationsService && notificationsService.createNotification) {
+          await notificationsService.createNotification(finalUserId, notifTitle, notifMessage);
+          console.log("Notification created automatically");
+      } else {
+          console.warn("Warning: notificationsService.createNotification is missing.");
+      }
     } catch (notifError) {
       console.error("Notification Error (Ignored):", notifError);
     }

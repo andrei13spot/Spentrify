@@ -17,10 +17,10 @@ import axios from 'axios';
 import { useAuth } from '../context/AuthContext'; 
 import { toLocalDateKey } from '../utils/date';
 
-// Food=1, Bills=4/5/6 (Electricity/Water), Shopping=9, etc.
+/* ================= CATEGORY MAPPING ================= */
 const CATEGORY_MAPPING: Record<number, string> = {
   1: 'Food',
-  2: 'Food', 
+  2: 'Groceries', 
   3: 'Transport',
   4: 'Bills', 
   5: 'Bills', 
@@ -88,8 +88,6 @@ export default function PopUpScreen() {
 
       console.log("Saving Pop-up Transaction:", payload);
 
-      // Note: Mas maganda kung gagamitin mo ang API_URL variable galing context/env
-      // Pero sige, hardcoded muna para gumana sa emulator mo ngayon.
       const response = await axios.post('http://10.0.2.2:3000/api/transactions', payload);
 
       if (response.data.success) {

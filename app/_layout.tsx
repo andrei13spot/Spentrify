@@ -30,7 +30,6 @@ export default function RootLayout() {
           console.log("SMS Permission Granted");
         } else {
           console.log("SMS Permission Denied");
-          // Optional: Alert the user why it's needed
           // Alert.alert("Permission Required", "SMS detection features will not work without permission.");
         }
       } catch (err) {
@@ -70,7 +69,7 @@ export default function RootLayout() {
             <Stack.Screen 
               name="pop-up" 
               options={{
-                presentation: "transparentModal", // Ito ang magic para maging overlay
+                presentation: "transparentModal", 
                 animation: "fade",
                 headerShown: false,
               }} 

@@ -200,10 +200,10 @@ export default function SettingsScreen() {
         text: "Log Out",
         style: "destructive",
         onPress: () => {
-          clearNotifications(); // 🔔 clear notifications
-          clearTransactions();  // 📊 clear transaction data
-          logout();             // 🔐 clear auth session
-          router.replace("/");  // ⬅️ back to login
+          clearNotifications(); // clear notifications
+          clearTransactions();  // clear transaction data
+          logout();             // clear auth session
+          router.replace("/");  // back to login
         },
       },
     ]);

@@ -12,14 +12,14 @@ const db = require('../database/connection');
  * Mapping ng keywords base sa Merchant name mula sa SMS/Notifications.
  */
 const KEYWORD_MAP = {
-  'Food': ['jollibee', 'mcdonalds', 'grabfood', 'foodpanda', 'starbucks', 'kfc', 'burger king'],
-  'Groceries': ['puregold', 'savemore', 'supermarket', '7-eleven', 'mercury drug', 'watsons'],
-  'Transportation': ['grab', 'angkas', 'joyride', 'shell', 'petron', 'caltex', 'easytrip', 'autosweep'],
-  'Electricity': ['meralco', 'kuryente'],
-  'Water': ['maynilad', 'manila water'],
-  'Internet': ['globe', 'smart', 'pldt', 'converge', 'skycable'],
-  'Subscriptions': ['netflix', 'spotify', 'youtube', 'disney'],
-  'Shopping': ['lazada', 'shopee', 'zalora', 'uniqlo', 'sm store']
+  'Food': ['jollibee', 'mcdonalds', 'grabfood', 'foodpanda', 'starbucks', 'kfc', 'burger king', 'chowking', 'mang inasal', 'coffee'],
+  'Groceries': ['puregold', 'savemore', 'supermarket', '7-eleven', 'mercury drug', 'watsons', 'alfamart', 'robinsons', 'shopwise'],
+  'Transportation': ['grab', 'angkas', 'joyride', 'shell', 'petron', 'caltex', 'easytrip', 'autosweep', 'seaoil', 'unioil'],
+  'Electricity': ['meralco', 'kuryente', 'electric'],
+  'Water': ['maynilad', 'manila water', 'prime water'],
+  'Internet': ['globe', 'smart', 'pldt', 'converge', 'skycable', 'dito'],
+  'Subscriptions': ['netflix', 'spotify', 'youtube', 'disney', 'apple', 'google storage'],
+  'Shopping': ['lazada', 'shopee', 'zalora', 'uniqlo', 'sm store', 'department store', 'h&m']
 };
 
 /**
@@ -30,40 +30,80 @@ async function suggestCategory(merchantName) {
   if (!merchantName) return null;
   
   const name = merchantName.toLowerCase();
-  const matchedKey = Object.keys(KEYWORD_MAP).find(key => name.includes(key));
   
-  if (matchedKey) {
-    const categoryName = KEYWORD_MAP[matchedKey];
+
+  const matchedCategory = Object.keys(KEYWORD_MAP).find(category => {
+    const keywords = KEYWORD_MAP[category];
+    // Check if any keyword (e.g., 'jollibee') exists in the merchant name
+    return keywords.some(keyword => name.includes(keyword));
+  });
+  
+  if (matchedCategory) {
+    // Determine category ID from DB based on the matched key
     const rows = await db.query(
       'SELECT category_id FROM Categories WHERE category_name = ? LIMIT 1',
-      [categoryName]
+      [matchedCategory]
     );
     return rows.length > 0 ? rows[0].category_id : null;
   }
   
-  return null; // Default to 'Others' sa UI kung walang match
+  return null; // Default to 'Others' if no match
 }
-
 /**
  * FEATURE: SMS/Notification Parsing
- * Hinihimay ang raw text mula sa Android Emulator (Feature 1).
  * @param {string} rawText 
  * @param {number} userId 
  */
+
 async function parseNotification(rawText, userId) {
-  // Regex patterns para sa digital transactions (GCash/Maya)
+  // Note: Added [\\d,]+ to handle amounts with commas (e.g., "1,000.00")
   const PATTERNS = {
-    GCASH: /You have sent PHP\s?(\d+\.?\d*) to (.*) on/i,
-    MAYA: /You've paid PHP\s?(\d+\.?\d*) to (.*)\./i
+    // "You have sent PHP 1,000.00 to Juan Cruz on..."
+    GCASH: /You have sent PHP\s?([\d,]+\.?\d*) to (.*) on/i,
+    
+    // "You've paid PHP 500.00 to Jollibee..."
+    MAYA: /You've paid PHP\s?([\d,]+\.?\d*) to (.*)\./i,
+    
+    // RCBC Credit: "Your RCBC Bankard... used for PHP 1,500.00 at STARBUCKS..."
+    RCBC_CREDIT: /used for PHP\s?([\d,]+\.?\d*) at (.*?) on/i,
+    
+    // RCBC Debit: "Your account... has been debited PHP 1,000.00 for purchase at SM STORE"
+    RCBC_DEBIT: /debited PHP\s?([\d,]+\.?\d*) for purchase at (.*?)(?:\.| on)/i,
+    
+    // UnionBank: "You paid PHP 500.00 to SHOPEE using..."
+    UNIONBANK_PAID: /You paid PHP\s?([\d,]+\.?\d*) to (.*?) using/i,
+    
+    // UnionBank: "PHP 1,000.00 was debited... for purchase at LAZADA"
+    UNIONBANK_DEBIT: /PHP\s?([\d,]+\.?\d*) was debited .*? for purchase at (.*?)(?:\.| on)/i,
+
+    // BDO: "Use of BDO Credit Card... for P1,000.00 at MCDONALDS..."
+    // Note: BDO often uses 'P' instead of 'PHP'
+    BDO: /for P\s?([\d,]+\.?\d*) at (.*?) on/i,
+
+    // BPI: "You have paid PHP 1,000.00 to MERALCO..."
+    BPI: /paid PHP\s?([\d,]+\.?\d*) to (.*?) using/i
   };
 
   let amount = 0;
   let merchant = 'Unknown Merchant';
+  let matched = false;
 
-  const gcashMatch = rawText.match(PATTERNS.GCASH);
-  if (gcashMatch) {
-    amount = parseFloat(gcashMatch[1]);
-    merchant = gcashMatch[2].trim();
+  // Loop through patterns to find a match
+  for (const [key, regex] of Object.entries(PATTERNS)) {
+    const match = rawText.match(regex);
+    if (match) {
+      // Remove commas from amount (e.g. "1,500.00" -> "1500.00")
+      amount = parseFloat(match[1].replace(/,/g, ''));
+      merchant = match[2].trim();
+      matched = true;
+      console.log(`Matched Provider: ${key}`);
+      break; // Stop loop once matched
+    }
+  }
+
+  // If no regex matched, return null or handle as generic
+  if (!matched && amount === 0) {
+      console.log("No regex pattern matched the SMS.");
   }
 
   const categoryId = await suggestCategory(merchant);
@@ -77,6 +117,7 @@ async function parseNotification(rawText, userId) {
     is_manual: 0
   };
 }
+
 
 /**
  * STANDARD OPERATIONS
