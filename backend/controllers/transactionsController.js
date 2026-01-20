@@ -1,13 +1,35 @@
 /**
  * Transactions Controller
- * Handles HTTP requests for transaction operations.
  */
 
 const transactionService = require('../services/transactionsService');
 const categoriesService = require('../services/categoriesService');
 const notificationsService = require('../services/notificationsService');
-// Import database helper directly for the fix
-const { run } = require('../database/connection'); 
+const { query, run } = require('../database/connection'); 
+
+function formatDateKey(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function normalizeTransactionDate(value) {
+  if (!value) {
+    return null;
+  }
+
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return value;
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  return formatDateKey(parsed);
+}
 
 /**
  * FEATURE: Transaction Detection
@@ -15,15 +37,18 @@ const { run } = require('../database/connection');
 async function detectTransaction(req, res, next) {
   try {
     const { raw_text, user_id } = req.body;
+    const userId = Number(user_id);
 
     if (!raw_text) {
-      return res.status(400).json({ 
-        success: false, 
-        error: { message: 'Missing raw_text field' } 
-      });
+      return res.status(400).json({ success: false, error: { message: 'Missing raw_text field' } });
     }
 
-    const detectedData = await categoriesService.parseNotification(raw_text, user_id || 'default_user');
+   
+    if (Number.isNaN(userId)) {
+      return res.status(400).json({ success: false, error: { message: 'User ID is required' } });
+    }
+
+    const detectedData = await categoriesService.parseNotification(raw_text, userId);
 
     res.json({
       success: true,
@@ -40,9 +65,12 @@ async function detectTransaction(req, res, next) {
  */
 async function getAllTransactions(req, res, next) {
   try {
-    const userId = 1;
+    const userId = Number(req.query.user_id);
+    if (Number.isNaN(userId)) {
+      return res.status(400).json({ success: false, error: 'User ID is required' });
+    }
+
     const transactions = await transactionService.getAllTransactions(userId);
-    
     res.json({
       success: true,
       data: transactions,
@@ -59,75 +87,88 @@ async function getAllTransactions(req, res, next) {
 async function getTransactionById(req, res, next) {
   try {
     const { id } = req.params;
-    const userId = req.query.user_id || 'default_user';
+    const userId = Number(req.query.user_id);
+
+    if (Number.isNaN(userId)) {
+      return res.status(400).json({ success: false, error: 'User ID is required' });
+    }
     
     const transaction = await transactionService.getTransactionById(id, userId);
     
     if (!transaction) {
-      return res.status(404).json({
-        success: false,
-        error: { message: 'Transaction not found' }
-      });
+      return res.status(404).json({ success: false, error: { message: 'Transaction not found' } });
     }
     
-    res.json({
-      success: true,
-      data: transaction
-    });
+    res.json({ success: true, data: transaction });
   } catch (error) {
     next(error);
   }
 }
 
 /**
- * Create Transaction (Manual / Pop-up Confirm)
- * FIXED: Auto-creates User & Category to prevent DB Crashes
+ * Create Transaction
+
  */
 async function createTransaction(req, res, next) {
   try {
-    // 1. Setup Defaults
-    const userId = 1; // Force User 1 for now
-    const catId = req.body.category_id || 13; // Default to 'Others' (13) if null
-
-    // 2. --- SAFETY CHECK (THE FIX) ---
-    // Ensure User 1 exists in DB
-    await run(`INSERT OR IGNORE INTO Users (user_id, email_encrypted, passcode_hash) VALUES (1, 'default_user_enc', 'pass123')`);
+    const { user_id } = req.body; 
     
-    // Ensure the chosen Category exists in DB (Avoids Foreign Key Error)
-    // We insert a generic placeholder if it doesn't exist yet
-    await run(`INSERT OR IGNORE INTO Categories (category_id, category_name, is_itr_deductible) VALUES (?, 'System Category', 0)`, [catId]);
-    // -----------------------------
+    const finalUserId = Number(user_id);
 
+    if (Number.isNaN(finalUserId) || finalUserId <= 0) {
+      return res.status(400).json({ success: false, error: 'User ID is required to save transaction.' });
+    }
+
+    const catId = req.body.category_id || 13; // Default to 'Others'
+
+    const userRows = await query('SELECT 1 FROM Users WHERE user_id = ? LIMIT 1', [finalUserId]);
+    if (userRows.length === 0) {
+      return res.status(400).json({ success: false, error: 'User ID not found' });
+    }
+
+    await run(`INSERT OR IGNORE INTO Users (user_id, email_encrypted, passcode_hash) VALUES (?, 'default_email', 'pass123')`, [finalUserId]);
+    
+
+    await run(`INSERT OR IGNORE INTO Categories (category_id, category_name, is_itr_deductible) VALUES (?, 'System Category', 0)`, [catId]);
+
+    // Clean Data
     const cleanData = {
-      user_id: userId,
-      category_id: catId,
-      amount: req.body.amount,
+      user_id: finalUserId, 
+      category_id: Number(catId),
+      amount: Number(req.body.amount),
       merchant_name: req.body.merchant || req.body.merchant_name || 'General Merchant',
       description: req.body.description || req.body.merchant || 'Manual Transaction',
-      transaction_date: req.body.transaction_date || new Date().toISOString(),
+      transaction_date: normalizeTransactionDate(req.body.transaction_date) || formatDateKey(new Date()),
       source_type: req.body.source_type || 'Digital', 
       reference_number: req.body.reference_number || null,
-      is_manual: req.body.is_manual || 0
+      is_manual: req.body.is_manual ? 1 : 0,       // Convert true -> 1
+      is_reimbursable: req.body.is_reimbursable ? 1 : 0 // Convert true -> 1
     };
 
-    // 3. Save Transaction
+    if (typeof cleanData.amount !== 'number' || cleanData.amount <= 0) {
+      return res.status(400).json({ success: false, error: { message: 'Amount must be a positive number' } });
+    }
+
+    // Save to Database
     const transaction = await transactionService.createTransaction(cleanData);
 
-    console.log("SUCCESS: Transaction Saved!");
-    console.log("Amount:", cleanData.amount);
+    console.log(`SUCCESS: Transaction Saved for User ${finalUserId}!`);
 
-    // 4. Trigger Notification (Fire and Forget)
+    // Trigger Notification
     try {
       const notifTitle = "Transaction Confirmed";
-      const notifMessage = `PHP ${cleanData.amount} • ${req.body.description || 'Expense'}`;
+      const notifMessage = `PHP ${cleanData.amount.toLocaleString()} • ${cleanData.description}`;
       
-      await notificationsService.createNotification(userId, notifTitle, notifMessage);
-      console.log("Notification created");
+      if (notificationsService && notificationsService.createNotification) {
+          await notificationsService.createNotification(finalUserId, notifTitle, notifMessage);
+          console.log("Notification created automatically");
+      } else {
+          console.warn("Warning: notificationsService.createNotification is missing.");
+      }
     } catch (notifError) {
       console.error("Notification Error (Ignored):", notifError);
     }
 
-    // 5. Send Response
     res.status(201).json({
       success: true,
       data: transaction,
@@ -141,66 +182,65 @@ async function createTransaction(req, res, next) {
 }
 
 /**
- * Update an existing transaction
+ * Update Transaction
  */
 async function updateTransaction(req, res, next) {
   try {
     const { id } = req.params;
-    const { amount, description, category_id, transaction_date } = req.body;
-    const userId = req.query.user_id || 1;
+    const { amount, description, merchant_name, category_id, transaction_date, is_reimbursable, user_id } = req.body; // user_id in body for updates usually
     
+    const finalUserId = Number(user_id || req.query.user_id);
+
+    if (Number.isNaN(finalUserId)) {
+        return res.status(400).json({ success: false, error: 'User ID is required' });
+    }
+
     if (amount !== undefined && (typeof amount !== 'number' || amount <= 0)) {
-      return res.status(400).json({
-        success: false,
-        error: { message: 'Amount must be a positive number' }
-      });
+      return res.status(400).json({ success: false, error: { message: 'Amount must be a positive number' } });
     }
     
-    const transaction = await transactionService.updateTransaction(id, userId, {
+    const normalizedDate = transaction_date !== undefined
+      ? normalizeTransactionDate(transaction_date)
+      : undefined;
+
+    const transaction = await transactionService.updateTransaction(id, finalUserId, {
       amount,
       description,
+      merchant_name,
       category_id,
-      transaction_date
+      transaction_date: normalizedDate,
+      is_reimbursable
     });
     
     if (!transaction) {
-      return res.status(404).json({
-        success: false,
-        error: { message: 'Transaction not found' }
-      });
+      return res.status(404).json({ success: false, error: { message: 'Transaction not found or unauthorized' } });
     }
     
-    res.json({
-      success: true,
-      data: transaction,
-      message: 'Transaction updated successfully'
-    });
+    res.json({ success: true, data: transaction, message: 'Transaction updated successfully' });
   } catch (error) {
     next(error);
   }
 }
 
 /**
- * Delete a transaction
+ * Delete Transaction
  */
 async function deleteTransaction(req, res, next) {
   try {
     const { id } = req.params;
-    const userId = req.query.user_id || 'default_user';
+    const userId = Number(req.body.user_id);
+
+    if (Number.isNaN(userId)) {
+        return res.status(400).json({ success: false, error: 'User ID is required' });
+    }
     
     const deleted = await transactionService.deleteTransaction(id, userId);
     
     if (!deleted) {
-      return res.status(404).json({
-        success: false,
-        error: { message: 'Transaction not found' }
-      });
+      return res.status(404).json({ success: false, error: { message: 'Transaction not found or unauthorized' } });
     }
     
-    res.json({
-      success: true,
-      message: 'Transaction deleted successfully'
-    });
+    res.json({ success: true, message: 'Transaction deleted successfully' });
   } catch (error) {
     next(error);
   }

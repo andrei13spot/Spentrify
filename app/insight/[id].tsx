@@ -1,7 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
+  Platform,
   Share,
   StyleSheet,
   Text,
@@ -10,6 +11,20 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useData } from "../../context/DataContext";
+import { useAuth } from "../../context/AuthContext";
+import { parseLocalDate } from "../../utils/date";
+
+function getApiBaseUrl(): string {
+  if (process.env.EXPO_PUBLIC_API_URL) {
+    return process.env.EXPO_PUBLIC_API_URL;
+  }
+  if (Platform.OS === "android") {
+    return "http://10.0.2.2:3000";
+  }
+  return "http://localhost:3000";
+}
+
+const API_BASE_URL = getApiBaseUrl();
 
 type InsightSentiment = "positive" | "negative" | "neutral";
 
@@ -25,12 +40,102 @@ const SPENTRIFY_BLUE = "#3B82F6";
 
 type TabKey = "summary" | "actionPoints" | "recommendations";
 
+function formatPeso(amount: number) {
+  return `₱${Math.round(amount).toLocaleString()}`;
+}
+
 /* ================= SCREEN ================= */
 
 export default function InsightDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { transactions } = useData();
+  const { allTransactions, transactions: budgets } = useData();
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<TabKey>("summary");
+  const [backendInsight, setBackendInsight] = useState<any | null>(null);
+  const [detailContent, setDetailContent] = useState<{
+    summary?: string;
+    actionPoints?: string[];
+    recommendations?: string[];
+  } | null>(null);
+
+  const contextStats = useMemo(() => {
+    const now = new Date();
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(now.getDate() - 30);
+    const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const last30Days = allTransactions.filter((tx: any) => {
+      const d = parseLocalDate(tx.transaction_date || tx.created_at);
+      return d >= thirtyDaysAgo;
+    });
+    const currentMonth = allTransactions.filter((tx: any) => {
+      const d = parseLocalDate(tx.transaction_date || tx.created_at);
+      return d >= firstDayOfMonth;
+    });
+
+    const totalLast30 = last30Days.reduce(
+      (sum: number, tx: any) => sum + (tx.amount || 0),
+      0
+    );
+    const totalCurrentMonth = currentMonth.reduce(
+      (sum: number, tx: any) => sum + (tx.amount || 0),
+      0
+    );
+
+    const largestTx = currentMonth.reduce((max: any, tx: any) => {
+      if (!max || (tx.amount || 0) > (max.amount || 0)) return tx;
+      return max;
+    }, null);
+
+    const categoryTotals = new Map<string, number>();
+    currentMonth.forEach((tx: any) => {
+      const name = tx.category || "Others";
+      categoryTotals.set(name, (categoryTotals.get(name) || 0) + (tx.amount || 0));
+    });
+    let topCategory: { name: string; total: number } | null = null;
+    for (const [name, total] of categoryTotals.entries()) {
+      if (!topCategory || total > topCategory.total) {
+        topCategory = { name, total };
+      }
+    }
+
+    return {
+      last30Days,
+      currentMonth,
+      totalLast30,
+      totalCurrentMonth,
+      largestTx,
+      topCategory,
+    };
+  }, [allTransactions]);
+
+  useEffect(() => {
+    if (!id || typeof id !== "string" || !id.startsWith("backend-")) {
+      setBackendInsight(null);
+      return;
+    }
+    if (!user?.id) return;
+
+    const insightId = Number(id.replace("backend-", ""));
+    if (Number.isNaN(insightId)) return;
+
+    const fetchInsight = async () => {
+      try {
+        const response = await fetch(
+          `${API_BASE_URL}/api/insights?user_id=${user.id}&limit=50`
+        );
+        const data = await response.json();
+        if (data.success && Array.isArray(data.data)) {
+          const match = data.data.find((insight: any) => insight.id === insightId);
+          setBackendInsight(match || null);
+        }
+      } catch (error) {
+        console.warn("Failed to load insight detail:", error);
+      }
+    };
+
+    fetchInsight();
+  }, [id, user?.id]);
 
   const insight = useMemo<InsightPayload | null>(() => {
     if (!id || typeof id !== "string") return null;
@@ -38,12 +143,36 @@ export default function InsightDetailScreen() {
     const now = new Date();
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(now.getDate() - 7);
+    const fourteenDaysAgo = new Date();
+    fourteenDaysAgo.setDate(now.getDate() - 14);
 
-    const recentTx = transactions.filter(
-      (t) => new Date(t.createdAt) >= sevenDaysAgo
-    );
+    const recentTx = allTransactions.filter((t: any) => {
+      const d = parseLocalDate(t.transaction_date || t.created_at);
+      return d >= sevenDaysAgo;
+    });
+    const prevTx = allTransactions.filter((t: any) => {
+      const d = parseLocalDate(t.transaction_date || t.created_at);
+      return d >= fourteenDaysAgo && d < sevenDaysAgo;
+    });
 
-    const totalSpent = recentTx.reduce((sum, t) => sum + t.amount, 0);
+    const totalSpent = recentTx.reduce((sum: number, t: any) => sum + (t.amount || 0), 0);
+    const prevTotal = prevTx.reduce((sum: number, t: any) => sum + (t.amount || 0), 0);
+    const diffPercent = prevTotal > 0 ? Math.round(((totalSpent - prevTotal) / prevTotal) * 100) : 0;
+    const largestRecent = recentTx.reduce((max: any, tx: any) => {
+      if (!max || (tx.amount || 0) > (max.amount || 0)) return tx;
+      return max;
+    }, null);
+    const recentCategoryTotals = new Map<string, number>();
+    recentTx.forEach((tx: any) => {
+      const name = tx.category || "Others";
+      recentCategoryTotals.set(name, (recentCategoryTotals.get(name) || 0) + (tx.amount || 0));
+    });
+    let topRecentCategory: { name: string; total: number } | null = null;
+    for (const [name, total] of recentCategoryTotals.entries()) {
+      if (!topRecentCategory || total > topRecentCategory.total) {
+        topRecentCategory = { name, total };
+      }
+    }
 
     switch (id) {
       case "weekly-trend":
@@ -52,45 +181,173 @@ export default function InsightDetailScreen() {
           sentiment: "neutral",
           summary: `You made ${recentTx.length} transactions in the last 7 days with a total spend of ₱${totalSpent.toLocaleString()}.`,
           actionPoints:
-            "• Review daily expenses\n• Identify high-spend days\n• Reduce impulse spending",
+            [
+              `• Largest purchase: ${largestRecent ? formatPeso(largestRecent.amount || 0) : "N/A"}`,
+              `• Top category: ${topRecentCategory ? `${topRecentCategory.name} (${formatPeso(topRecentCategory.total)})` : "N/A"}`,
+              `• Transactions this week: ${recentTx.length}`,
+            ].join("\n"),
           recommendations:
-            "Set daily spending limits and monitor expenses in real time.",
+            diffPercent > 0
+              ? `You spent ${diffPercent}% more than the previous week. Consider tightening daily limits.`
+              : `You spent ${Math.abs(diffPercent)}% less than the previous week. Keep this pace.`,
         };
 
       case "under-budget":
-        return {
-          id,
-          sentiment: "positive",
-          summary: `Great job! You spent only ₱${totalSpent.toLocaleString()} this week, staying under your usual spending range.`,
-          actionPoints:
-            "• Maintain your current budget\n• Save the excess\n• Plan ahead for next week",
-          recommendations:
-            "Transfer extra funds into savings or upcoming bills.",
-        };
+        {
+          const overallBudget = budgets.find(
+            (b) => !b.category || b.name === "Overall Budget"
+          );
+          const weeklyBudget = overallBudget?.amount ? overallBudget.amount / 4 : 0;
+          const remaining = Math.max(0, weeklyBudget - totalSpent);
+          return {
+            id,
+            sentiment: "positive",
+            summary: weeklyBudget
+              ? `Great job! You spent ₱${totalSpent.toLocaleString()} this week, which is ₱${Math.round(
+                  remaining
+                ).toLocaleString()} under your weekly budget.`
+              : `Great job! You spent only ₱${totalSpent.toLocaleString()} this week.`,
+            actionPoints:
+              [
+                `• Weekly budget: ${weeklyBudget ? formatPeso(weeklyBudget) : "N/A"}`,
+                `• Remaining budget: ${weeklyBudget ? formatPeso(remaining) : "N/A"}`,
+                `• Transactions this week: ${recentTx.length}`,
+              ].join("\n"),
+            recommendations:
+              "Transfer extra funds into savings or upcoming bills.",
+          };
+        }
 
       case "subscription-alert":
-        return {
-          id,
-          sentiment: "negative",
-          summary:
-            "Subscription-related expenses were detected in your transactions.",
-          actionPoints:
-            "• Review subscriptions\n• Cancel unused services\n• Downgrade plans",
-          recommendations:
-            "Set a monthly subscription cap and review charges regularly.",
-        };
+        {
+          const subscriptionKeywords = [
+            "netflix",
+            "spotify",
+            "youtube",
+            "premium",
+            "subscription",
+            "monthly",
+          ];
+          const matches = allTransactions.filter((tx: any) => {
+            const merchant = (tx.merchant_name || "").toLowerCase();
+            return subscriptionKeywords.some((k) => merchant.includes(k));
+          });
+          return {
+            id,
+            sentiment: "negative",
+            summary: `Subscription-related expenses were detected (${matches.length} transaction${
+              matches.length === 1 ? "" : "s"
+            }).`,
+            actionPoints:
+              [
+                `• Subscription transactions: ${matches.length}`,
+                `• Most recent: ${matches[0]?.merchant_name || "N/A"}`,
+                "• Review recurring charges",
+              ].join("\n"),
+            recommendations:
+              "Set a monthly subscription cap and review charges regularly.",
+          };
+        }
 
       default:
+        if (id.startsWith("backend-") && backendInsight) {
+          const type = backendInsight.type || "AI";
+          const isSummary = type === "AI Summary";
+          const largest = contextStats.largestTx;
+          const topCategory = contextStats.topCategory;
+          const actionItems = [];
+
+          if (largest) {
+            actionItems.push(
+              `• Largest recent purchase: ${formatPeso(largest.amount || 0)} (${largest.merchant_name || "Unknown"})`
+            );
+          }
+          if (topCategory) {
+            actionItems.push(
+              `• Top category this month: ${topCategory.name} (${formatPeso(topCategory.total)})`
+            );
+          }
+          if (contextStats.last30Days.length > 0) {
+            actionItems.push(
+              `• Transactions analyzed: ${contextStats.last30Days.length} in the last 30 days`
+            );
+          }
+
+          return {
+            id,
+            sentiment: type === "Overspending" ? "negative" : "neutral",
+            summary: isSummary
+              ? `Gemini summary based on your recent transactions:\n${backendInsight.message}`
+              : backendInsight.message,
+            actionPoints: actionItems.join("\n") || "• Add more transactions for detailed analysis",
+            recommendations: isSummary
+              ? "Use this summary as a quick overview, then open specific insights for details."
+              : "This insight is generated from your recent transactions.",
+          };
+        }
         return null;
     }
-  }, [id, transactions]);
+  }, [id, allTransactions, budgets, backendInsight, contextStats]);
+
+  useEffect(() => {
+    if (!user?.id || !id || !insight) {
+      setDetailContent(null);
+      return;
+    }
+
+    const fetchDetail = async () => {
+      try {
+        const payload: any = {
+          user_id: Number(user.id),
+          insight_type: id,
+          insight_message: insight.summary,
+          context: {
+            transactions_last_30_days: contextStats.last30Days.length,
+            total_current_month_php: contextStats.totalCurrentMonth,
+            top_category: contextStats.topCategory,
+          },
+        };
+
+        if (id.startsWith("backend-") && backendInsight?.id) {
+          payload.insight_id = backendInsight.id;
+        }
+
+        const response = await fetch(`${API_BASE_URL}/api/insights/detail`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await response.json();
+        if (data.success && data.data) {
+          setDetailContent(data.data);
+        } else {
+          setDetailContent(null);
+        }
+      } catch (error) {
+        console.warn("Failed to load Gemini detail:", error);
+        setDetailContent(null);
+      }
+    };
+
+    fetchDetail();
+  }, [user?.id, id, insight, backendInsight, contextStats]);
 
   const tabContent = useMemo(() => {
     if (!insight) return "";
-    if (activeTab === "summary") return insight.summary;
-    if (activeTab === "actionPoints") return insight.actionPoints;
-    return insight.recommendations;
-  }, [activeTab, insight]);
+    if (activeTab === "summary") {
+      return detailContent?.summary || insight.summary;
+    }
+    if (activeTab === "actionPoints") {
+      const points = detailContent?.actionPoints?.length
+        ? detailContent.actionPoints
+        : insight.actionPoints.split("\n");
+      return points.join("\n");
+    }
+    const recs = detailContent?.recommendations?.length
+      ? detailContent.recommendations
+      : insight.recommendations.split("\n");
+    return recs.join("\n");
+  }, [activeTab, insight, detailContent]);
 
   const handleShare = async () => {
     if (!tabContent) return;
@@ -127,8 +384,21 @@ export default function InsightDetailScreen() {
         {/* CONTENT */}
         {insight && (
           <>
-            <View style={styles.emojiCard}>
-              <Text style={styles.emoji}>🧠</Text>
+            <View style={styles.contextCard}>
+              <Text style={styles.contextTitle}>Insight Context</Text>
+              <Text style={styles.contextText}>
+                Based on {contextStats.last30Days.length} transaction
+                {contextStats.last30Days.length === 1 ? "" : "s"} in the last 30 days.
+              </Text>
+              <Text style={styles.contextText}>
+                This month total: {formatPeso(contextStats.totalCurrentMonth)}.
+              </Text>
+              {contextStats.topCategory && (
+                <Text style={styles.contextText}>
+                  Top category: {contextStats.topCategory.name} (
+                  {formatPeso(contextStats.topCategory.total)}).
+                </Text>
+              )}
             </View>
 
             <View style={styles.tabs}>
@@ -214,14 +484,25 @@ const styles = StyleSheet.create({
     color: "#9CA3AF",
   },
 
-  emojiCard: {
+  contextCard: {
     backgroundColor: "#fff",
     borderRadius: 18,
-    paddingVertical: 20,
-    alignItems: "center",
+    padding: 16,
     marginTop: 6,
+    borderWidth: 1,
+    borderColor: "#E6EAF2",
   },
-  emoji: { fontSize: 40 },
+  contextTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#111827",
+    marginBottom: 6,
+  },
+  contextText: {
+    fontSize: 12.5,
+    color: "#6B7280",
+    marginBottom: 4,
+  },
 
   tabs: {
     flexDirection: "row",

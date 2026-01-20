@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { router, useFocusEffect } from "expo-router"; // Added useFocusEffect
+import { router, useFocusEffect } from "expo-router"; 
 import { useCallback, useState } from "react";
 import {
   FlatList,
@@ -14,29 +14,33 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
-import axios from "axios"; // Import Axios
+import axios from "axios"; 
+import { useAuth } from "../context/AuthContext";
 
-// Define Type for Notification
+/* ================= TYPES ================= */
 type NotificationItem = {
-  id: string;
+  notification_id: number; 
   title: string;
   message: string;
-  date: string;
+  created_at: string;      
   is_read: number;
 };
 
 export default function NotificationsScreen() {
   const insets = useSafeAreaInsets();
+  const { user } = useAuth(); 
   
-  // Local State para sa Data galing Backend
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // 1. FETCH DATA FROM BACKEND
-  const fetchNotifications = async () => {
+  const fetchNotifications = useCallback(async () => {
+    if (!user || !user.id) {
+        setLoading(false); 
+        return;
+    }
+
     try {
-      // setLoading(true); // Optional: Pwede tanggalin kung ayaw mo nagbi-blink
-      const response = await axios.get("http://10.0.2.2:3000/api/notifications?user_id=1");
+      const response = await axios.get(`http://10.0.2.2:3000/api/notifications?user_id=${user.id}`);
       
       if (response.data.success) {
         setNotifications(response.data.data);
@@ -44,45 +48,50 @@ export default function NotificationsScreen() {
     } catch (error) {
       console.error("Failed to fetch notifications:", error);
     } finally {
-      setLoading(false);
+      setLoading(false); 
     }
-  };
+  }, [user]);
 
-  // 2. AUTO-REFRESH (Tuwing bubuksan ang page)
   useFocusEffect(
     useCallback(() => {
       fetchNotifications();
-    }, [])
+    }, [fetchNotifications]) 
   );
 
-  // 3. DELETE SINGLE NOTIFICATION
-  const handleRemove = async (id: string) => {
+  // DELETE SINGLE NOTIFICATION (Updated ID usage)
+  const handleRemove = async (id: number) => {
+    if (!user?.id) return;
+
     LayoutAnimation.easeInEaseOut();
-    
-    // Update UI immediately (Optimistic Update)
-    setNotifications(prev => prev.filter(item => item.id !== id));
+    setNotifications(prev => prev.filter(item => item.notification_id !== id));
 
     try {
-      await axios.delete(`http://10.0.2.2:3000/api/notifications/${id}?user_id=1`);
+      await axios.delete(`http://10.0.2.2:3000/api/notifications/${id}?user_id=${user.id}`);
     } catch (error) {
       console.error("Delete error:", error);
-      fetchNotifications(); // Revert if failed
+      fetchNotifications(); 
     }
   };
 
   // 4. CLEAR ALL NOTIFICATIONS
   const handleClearAll = async () => {
+    if (!user?.id) return;
+
     LayoutAnimation.spring();
-    
-    // Clear UI immediately
     setNotifications([]);
 
     try {
-      await axios.delete("http://10.0.2.2:3000/api/notifications?user_id=1");
+      await axios.delete(`http://10.0.2.2:3000/api/notifications?user_id=${user.id}`);
     } catch (error) {
       console.error("Clear all error:", error);
-      fetchNotifications(); // Revert if failed
+      fetchNotifications(); 
     }
+  };
+
+  // Helper to format date
+  const formatDate = (dateString: string) => {
+    if (!dateString) return "";
+    return new Date(dateString).toLocaleDateString() + " " + new Date(dateString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
   return (
@@ -118,21 +127,21 @@ export default function NotificationsScreen() {
               // LIST
               <FlatList
                 data={notifications}
-                keyExtractor={(item) => item.id.toString()}
+                keyExtractor={(item) => item.notification_id.toString()}
                 contentContainerStyle={{
                   paddingTop: 8,
                   paddingBottom: 120, 
                 }}
                 renderItem={({ item }) => (
                   <TouchableOpacity
-                    onPress={() => handleRemove(item.id)}
+                    onPress={() => handleRemove(item.notification_id)}
                     style={styles.card}
                     activeOpacity={0.85}
                   >
                     <View style={{ flex: 1 }}>
                       <Text style={styles.cardTitle}>{item.title}</Text>
                       <Text style={styles.cardMessage}>{item.message}</Text>
-                      <Text style={styles.cardDate}>{item.date}</Text>
+                      <Text style={styles.cardDate}>{formatDate(item.created_at)}</Text>
                     </View>
 
                     <Ionicons
@@ -148,7 +157,7 @@ export default function NotificationsScreen() {
           </>
         )}
 
-        {/* 🔽 CLEAR ALL */}
+        {/* CLEAR ALL */}
         {notifications.length > 0 && (
           <View
             style={[
@@ -168,19 +177,15 @@ export default function NotificationsScreen() {
   );
 }
 
-/* ======================= STYLES ======================= */
-
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: "#F9FAFB",
   },
-
   container: {
     flex: 1,
     backgroundColor: "#F9FAFB",
   },
-
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -189,13 +194,11 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     backgroundColor: "#FFFFFF",
   },
-
   headerTitle: {
     fontSize: 18,
-    fontFamily: "GoogleSans-Bold", // Make sure you have this font loaded, or use fontWeight: 'bold'
+    fontFamily: "GoogleSans-Bold", 
     color: "#111827",
   },
-
   clearAllBottom: {
     alignItems: "center",
     paddingTop: 12,
@@ -203,13 +206,11 @@ const styles = StyleSheet.create({
     borderTopColor: "#E5E7EB",
     backgroundColor: "#F9FAFB",
   },
-
   clearAllText: {
     color: "#3B82F6",
     fontSize: 13,
     fontFamily: "GoogleSans-Regular",
   },
-
   card: {
     backgroundColor: "#E6F0FF",
     padding: 16,
@@ -219,20 +220,17 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
   },
-
   cardTitle: {
     fontSize: 14,
     fontFamily: "GoogleSans-Bold",
     color: "#111827",
   },
-
   cardMessage: {
     marginTop: 4,
     fontSize: 13,
     fontFamily: "GoogleSans-Regular",
     color: "#374151",
   },
-
   cardDate: {
     fontSize: 11,
     marginTop: 6,

@@ -5,6 +5,6 @@ const notificationsController = require('../controllers/notificationsController'
 // Define Routes
 router.get('/', notificationsController.getNotifications);
 router.delete('/:id', notificationsController.deleteNotification);
-router.delete('/', notificationsController.clearAll);
+router.delete('/', notificationsController.deleteAllNotifications);
 
 module.exports = router;

@@ -37,14 +37,14 @@ export default function TabsLayout() {
   const insets = useSafeAreaInsets();
   const { isAuthenticated } = useAuth();
 
-  /* 🔐 AUTH GUARD */
+  /* AUTH GUARD */
   useEffect(() => {
     if (!isAuthenticated) {
       router.replace("/");
     }
   }, [isAuthenticated]);
 
-  // ⛔ Prevent flash of tabs before redirect
+  // Prevent flash of tabs before redirect
   if (!isAuthenticated) {
     return null;
   }

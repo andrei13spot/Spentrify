@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router, useLocalSearchParams } from 'expo-router'; // 1. Added useLocalSearchParams
+import { router, useLocalSearchParams } from 'expo-router'; 
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -14,27 +14,28 @@ import {
   Alert
 } from 'react-native';
 import axios from 'axios';
+import { useAuth } from '../context/AuthContext'; 
+import { toLocalDateKey } from '../utils/date';
 
-
-// Food=1, Bills=4/5/6 (Electricity/Water), Shopping=9, etc.
+/* ================= CATEGORY MAPPING ================= */
 const CATEGORY_MAPPING: Record<number, string> = {
   1: 'Food',
-  2: 'Food', // Groceries mapped to Food icon for simplicity
+  2: 'Groceries', 
   3: 'Transport',
-  4: 'Bills', // Electricity
-  5: 'Bills', // Water
+  4: 'Bills', 
+  5: 'Bills', 
   9: 'Shopping',
   10: 'Health',
   13: 'Other',
-  // Add more mappings as needed based on your DB IDs
 };
 
 export default function PopUpScreen() {
   const params = useLocalSearchParams();
+  const { user } = useAuth(); 
   
   const [selected, setSelected] = useState<string | null>(null);
   const [customCategory, setCustomCategory] = useState('');
-  const [loading, setLoading] = useState(false); // Loading state for API call
+  const [loading, setLoading] = useState(false); 
   const [finalAmount, setFinalAmount] = useState('0');
 
   // UI Configuration for Categories
@@ -47,7 +48,6 @@ export default function PopUpScreen() {
     { id: 'Other', dbId: 13, icon: 'ellipsis-horizontal', color: '#f3f4f6', iconColor: '#6b7280' }, 
   ];
 
-  // Auto-populate data pag-load ng screen
   useEffect(() => {
     if (params.amount) {
       setFinalAmount(params.amount.toString());
@@ -55,7 +55,6 @@ export default function PopUpScreen() {
 
     if (params.category_id) {
       const catId = Number(params.category_id);
-      // Hanapin ang UI key base sa ID (e.g., ID 1 -> 'Food')
       const uiKey = CATEGORY_MAPPING[catId];
       if (uiKey) {
         setSelected(uiKey);
@@ -66,26 +65,29 @@ export default function PopUpScreen() {
   const handleConfirm = async () => {
     if (!selected) return;
     
+    if (!user || !user.id) {
+        Alert.alert("Error", "User not identified. Please login again.");
+        return;
+    }
+
     setLoading(true);
 
     try {
       const selectedCategoryObj = categories.find(c => c.id === selected);
       let categoryIdToSave = selectedCategoryObj?.dbId || 13;
 
-      // Prepare payload
       const payload = {
-        user_id: 'default_user', // Palitan ng dynamic ID kung may auth na
+        user_id: Number(user.id), 
         amount: parseFloat(finalAmount),
         merchant_name: params.merchant || 'Unknown Merchant',
         description: (selected === 'Other' && customCategory) ? customCategory : (params.merchant || 'Manual Transaction'),
-        transaction_date: params.date || new Date().toISOString(),
+        transaction_date: toLocalDateKey(params.date as string | undefined),
         category_id: categoryIdToSave || null, 
+        is_manual: 0
       };
 
-      console.log("Saving Transaction:", payload);
+      console.log("Saving Pop-up Transaction:", payload);
 
-      // 5. Send to Backend API
-      // Gamitin ang 10.0.2.2 para sa Android Emulator
       const response = await axios.post('http://10.0.2.2:3000/api/transactions', payload);
 
       if (response.data.success) {
@@ -94,7 +96,7 @@ export default function PopUpScreen() {
       }
     } catch (error) {
       console.error('Save failed:', error);
-      Alert.alert('Error', 'Failed to save transaction. Please try again.');
+      Alert.alert('Error', 'Failed to save transaction.');
     } finally {
       setLoading(false);
     }
@@ -119,7 +121,7 @@ export default function PopUpScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Amount (Dynamic Data) */}
+        {/* Amount */}
         <View style={styles.amountContainer}>
           <Text style={styles.amount}>
             PHP {parseFloat(finalAmount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
@@ -162,7 +164,7 @@ export default function PopUpScreen() {
           })}
         </View>
 
-        {/* CUSTOM INPUT (Shows if "Other" is selected) */}
+        {/* CUSTOM INPUT */}
         {selected === 'Other' && (
           <View style={styles.inputContainer}>
             <TextInput
@@ -200,7 +202,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
-    // Note: Overlay styling is handled by View above, container is transparent
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
@@ -213,10 +214,7 @@ const styles = StyleSheet.create({
     padding: 24,
     alignItems: 'center',
     shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
     elevation: 5,

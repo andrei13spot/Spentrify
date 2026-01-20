@@ -1,11 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
+  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import Svg, { Circle } from "react-native-svg";
@@ -20,6 +22,7 @@ const THEME = {
   text: "#111827",
   sub: "#6B7280",
   border: "#E5E7EB",
+  danger: "#DC2626",
 };
 
 /* ================= HELPERS ================= */
@@ -36,7 +39,7 @@ function ProgressDonut({
   spent: number;
   budget: number;
 }) {
-  const progress = clamp01(spent / budget);
+  const progress = budget > 0 ? clamp01(spent / budget) : 0;
 
   const size = 220;
   const stroke = 20;
@@ -88,14 +91,25 @@ function ProgressDonut({
 
 export default function ReportScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { transactions } = useData();
+  const { transactions, updateTransaction, deleteTransaction } = useData();
 
   const transaction = useMemo(
     () => transactions.find((t) => t.id === id),
     [transactions, id]
   );
 
-  const [reports, setReports] = useState<number[]>([]);
+  const [isEditing, setIsEditing] = useState(false);
+  const [name, setName] = useState("");
+  const [amount, setAmount] = useState("");
+  const [date, setDate] = useState("");
+
+  useEffect(() => {
+    if (transaction) {
+      setName(transaction.name);
+      setAmount(transaction.amount.toString());
+      setDate(transaction.date);
+    }
+  }, [transaction]);
 
   if (!transaction) {
     return (
@@ -107,11 +121,40 @@ export default function ReportScreen() {
     );
   }
 
-  const remaining = Math.max(0, transaction.amount - transaction.amount);
+  const numericAmount = Number(amount) || 0;
+  const spent = transaction.spent || 0;
+  const remaining = Math.max(0, numericAmount - spent);
 
-  const handleGenerateReport = () => {
-    setReports((prev) => [...prev, Date.now()]);
+  /* ================= ACTIONS ================= */
+
+  const handleSave = () => {
+    updateTransaction(transaction.id, {
+      name,
+      amount: numericAmount,
+      date,
+    });
+    setIsEditing(false);
   };
+
+  const handleDelete = () => {
+    Alert.alert(
+      "Confirm Delete Transaction?",
+      "This action cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => {
+            deleteTransaction(transaction.id);
+            router.replace("/(tabs)/home");
+          },
+        },
+      ]
+    );
+  };
+
+  /* ================= UI ================= */
 
   return (
     <View style={styles.safe}>
@@ -123,64 +166,55 @@ export default function ReportScreen() {
 
         <Text style={styles.headerTitle}>Generate Report</Text>
 
-        <View style={{ width: 24 }} />
+        <Pressable onPress={isEditing ? handleSave : () => setIsEditing(true)}>
+          <Ionicons
+            name={isEditing ? "checkmark" : "create-outline"}
+            size={22}
+            color={THEME.text}
+          />
+        </Pressable>
       </View>
 
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* MAIN CARD */}
+      <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.card}>
-          <Text style={styles.title}>{transaction.name}</Text>
-          <Text style={styles.date}>
-            Added on {new Date(transaction.createdAt).toLocaleDateString()}
-          </Text>
+          {/* NAME */}
+          {isEditing ? (
+            <TextInput
+              value={name}
+              onChangeText={setName}
+              style={styles.editTitle}
+            />
+          ) : (
+            <Text style={styles.title}>{name}</Text>
+          )}
 
-          <ProgressDonut
-            spent={transaction.amount}
-            budget={transaction.amount}
-          />
+          {/* DATE */}
+          {isEditing ? (
+            <TextInput
+              value={date}
+              onChangeText={setDate}
+              style={styles.editDate}
+              placeholder="MM/DD/YYYY"
+            />
+          ) : (
+            <Text style={styles.date}>Added on {date}</Text>
+          )}
+
+          <ProgressDonut spent={spent} budget={numericAmount} />
 
           {/* SUMMARY */}
           <View style={styles.summary}>
-            <Row label="Budget" value={peso(transaction.amount)} />
-            <Row label="Spent" value={peso(transaction.amount)} />
+            <Row label="Budget" value={peso(numericAmount)} />
+            <Row label="Spent" value={peso(spent)} />
             <Row label="Remaining" value={peso(remaining)} />
           </View>
 
-          {/* DIVIDER */}
           <View style={styles.divider} />
 
-          {/* GENERATE BUTTON */}
-          <Pressable
-            style={styles.generateBtn}
-            onPress={handleGenerateReport}
-          >
-            <Text style={styles.generateText}>Generate report</Text>
+          {/* DELETE */}
+          <Pressable style={styles.deleteBtn} onPress={handleDelete}>
+            <Text style={styles.deleteText}>Delete Transaction</Text>
           </Pressable>
-
-          {/* GENERATED REPORTS */}
-          {reports.map((id, index) => (
-            <Pressable
-              key={id}
-              style={styles.reportBox}
-              onPress={() => {
-                // later: open detailed AI-generated report
-              }}
-            >
-              <Text style={styles.reportTitle}>
-                Generated Report #{index + 1}
-              </Text>
-              <Text style={styles.reportText}>
-                AI-generated financial summary and insights will appear here.
-              </Text>
-            </Pressable>
-          ))}
-
-          <Text style={styles.hint}>
-            Reports are generated per transaction / goal
-          </Text>
         </View>
       </ScrollView>
     </View>
@@ -201,18 +235,15 @@ function Row({ label, value }: { label: string; value: string }) {
 /* ================= STYLES ================= */
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: THEME.bg,
-  },
+  safe: { flex: 1, backgroundColor: THEME.bg },
 
   header: {
     paddingHorizontal: 16,
     paddingTop: 14,
     paddingBottom: 10,
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
+    alignItems: "center",
     backgroundColor: THEME.card,
     borderBottomWidth: 1,
     borderBottomColor: THEME.border,
@@ -242,10 +273,28 @@ const styles = StyleSheet.create({
     color: THEME.text,
   },
 
+  editTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    borderBottomWidth: 1,
+    borderColor: THEME.border,
+    textAlign: "center",
+    marginBottom: 6,
+  },
+
   date: {
     fontSize: 12,
     color: THEME.sub,
     textAlign: "center",
+    marginBottom: 12,
+  },
+
+  editDate: {
+    fontSize: 12,
+    color: THEME.text,
+    textAlign: "center",
+    borderBottomWidth: 1,
+    borderColor: THEME.border,
     marginBottom: 12,
   },
 
@@ -260,21 +309,10 @@ const styles = StyleSheet.create({
     color: THEME.text,
   },
 
-  subText: {
-    fontSize: 12,
-    color: THEME.sub,
-    marginTop: 4,
-  },
+  subText: { fontSize: 12, color: THEME.sub },
+  mutedText: { fontSize: 11, color: THEME.sub },
 
-  mutedText: {
-    fontSize: 11,
-    color: THEME.sub,
-    marginTop: 2,
-  },
-
-  summary: {
-    marginTop: 14,
-  },
+  summary: { marginTop: 14 },
 
   row: {
     flexDirection: "row",
@@ -282,16 +320,8 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
 
-  rowLabel: {
-    fontSize: 13,
-    color: THEME.sub,
-  },
-
-  rowValue: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: THEME.text,
-  },
+  rowLabel: { fontSize: 13, color: THEME.sub },
+  rowValue: { fontSize: 13, fontWeight: "700", color: THEME.text },
 
   divider: {
     height: 1,
@@ -299,43 +329,14 @@ const styles = StyleSheet.create({
     marginVertical: 16,
   },
 
-  generateBtn: {
-    backgroundColor: THEME.primary,
-    borderRadius: 14,
-    paddingVertical: 14,
+  deleteBtn: {
     alignItems: "center",
-    marginBottom: 14,
+    paddingVertical: 16,
   },
 
-  generateText: {
-    color: "#FFFFFF",
+  deleteText: {
+    color: THEME.danger,
     fontWeight: "700",
     fontSize: 15,
-  },
-
-  reportBox: {
-    backgroundColor: "#F3F6FF",
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 10,
-  },
-
-  reportTitle: {
-    fontWeight: "700",
-    color: THEME.text,
-    marginBottom: 4,
-  },
-
-  reportText: {
-    fontSize: 13,
-    color: THEME.sub,
-    lineHeight: 18,
-  },
-
-  hint: {
-    textAlign: "center",
-    fontSize: 11,
-    color: THEME.sub,
-    marginTop: 10,
   },
 });

@@ -1,7 +1,4 @@
-// simple service for working with transactions
-// Updated for Spentrify V2 Schema (Categories, Merchant Names, Manual Entry)
 
-// Note: Gumagamit tayo ng destructuring para makuha ang query/run helpers
 const { query, run } = require('../database/connection');
 const encryptionService = require('./encryption');
 
@@ -11,7 +8,6 @@ const encryptionService = require('./encryption');
  * - Decrypts amount, merchant, and description
  */
 async function getAllTransactions(userId) {
-  // JOIN: Kinukuha natin ang category_name mula sa Categories table gamit ang category_id
   const sql = `
     SELECT 
       t.transaction_id, 
@@ -35,7 +31,7 @@ async function getAllTransactions(userId) {
 
   // Decryption & Formatting
   return rows.map((row) => ({
-    id: row.transaction_id, // Map DB 'transaction_id' to Frontend 'id'
+    id: row.transaction_id, 
     user_id: row.user_id,
     amount: parseFloat(encryptionService.decrypt(row.amount_encrypted)),
     merchant_name: row.merchant_name_encrypted 
@@ -44,7 +40,7 @@ async function getAllTransactions(userId) {
     description: row.description_encrypted
       ? encryptionService.decrypt(row.description_encrypted)
       : null,
-    category: row.category_name || 'Others', // Fallback name
+    category: row.category_name || 'Others', 
     category_id: row.category_id,
     icon: row.icon_identifier,
     transaction_date: row.transaction_date,
@@ -99,7 +95,7 @@ async function getTransactionById(id, userId) {
  * - Saves merchant_name and category_id
  */
 async function createTransaction(transactionData) {
-  // 1. Encrypt Data
+  // Encrypt Data
   const amountEncrypted = encryptionService.encrypt(
     transactionData.amount.toString()
   );
@@ -112,7 +108,7 @@ async function createTransaction(transactionData) {
     ? encryptionService.encrypt(transactionData.description)
     : null;
 
-  // 2. Insert into DB
+  // Insert into DB
   const sql = `
     INSERT INTO Transactions (
       user_id, 
@@ -140,7 +136,7 @@ async function createTransaction(transactionData) {
     ]
   );
 
-  // 3. Return plain object (for Frontend confirmation)
+  // Return plain object 
   return {
     id: result.lastID,
     user_id: transactionData.user_id,
@@ -159,7 +155,6 @@ async function updateTransaction(id, userId, updates) {
   const fields = [];
   const values = [];
 
-  // Build dynamic query based on what fields are present
   if (updates.amount !== undefined) {
     fields.push('amount_encrypted = ?');
     values.push(encryptionService.encrypt(updates.amount.toString()));
@@ -195,7 +190,6 @@ async function updateTransaction(id, userId, updates) {
 
   values.push(id, userId);
 
-  // Note: Using 'transaction_id' column name
   const sql = `
     UPDATE Transactions
     SET ${fields.join(', ')}
