@@ -1,0 +1,446 @@
+INSIGHTS WITHOUT API CALLS 
+
+import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
+import {
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+
+export default function InsightsScreen() {
+  // TEMP: Replace later with real auth/user context
+  const userName = "Clark";
+
+  return (
+    <SafeAreaView style={styles.safeArea} edges={["top"]}>
+      <View style={styles.container}>
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.title}>Insights</Text>
+          <Text style={styles.subtitle}>Analyze your spending habits</Text>
+        </View>
+
+        {/* Weekly Spending Trend */}
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() =>
+            router.push({
+              pathname: "/insight/[id]",
+              params: {
+                id: "weekly-trend",
+                name: userName,
+              },
+            })
+          }
+          style={styles.card}
+        >
+          <Text style={styles.cardTitle}>Weekly Spending Trend</Text>
+          <Text style={styles.cardSubtitle}>
+            You spent <Text style={styles.highlight}>12% more</Text> than last week.
+          </Text>
+
+          {/* Line Chart Placeholder */}
+          <View style={styles.chartContainer}>
+            <View style={styles.fakeLine} />
+          </View>
+        </TouchableOpacity>
+
+        {/* Under Budget */}
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() =>
+            router.push({
+              pathname: "/insight/[id]",
+              params: {
+                id: "under-budget",
+                name: userName,
+              },
+            })
+          }
+          style={styles.alertCard}
+        >
+          <View style={[styles.iconWrapper, styles.successBg]}>
+            <Ionicons name="arrow-down" size={18} color="#16A34A" />
+          </View>
+
+          <View style={styles.alertText}>
+            <Text style={styles.alertTitle}>Under Budget</Text>
+            <Text style={styles.alertDescription}>
+              Great job! You’re PHP 2,000 under your monthly budget.
+            </Text>
+          </View>
+        </TouchableOpacity>
+
+        {/* Subscription Alert */}
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() =>
+            router.push({
+              pathname: "/insight/[id]",
+              params: {
+                id: "subscription-alert",
+                name: userName,
+              },
+            })
+          }
+          style={styles.alertCard}
+        >
+          <View style={[styles.iconWrapper, styles.warningBg]}>
+            <Ionicons name="alert" size={18} color="#F97316" />
+          </View>
+
+          <View style={styles.alertText}>
+            <Text style={styles.alertTitle}>Subscription Alert</Text>
+            <Text style={styles.alertDescription}>
+              Netflix price increased by PHP 50 this month.
+            </Text>
+          </View>
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: "#F9FAFB",
+  },
+
+  container: {
+    flex: 1,
+    backgroundColor: "#F9FAFB",
+    paddingHorizontal: 20,
+  },
+
+  /* Header */
+  header: {
+    marginBottom: 16,
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: "600",
+    color: "#111827",
+  },
+  subtitle: {
+    fontSize: 13,
+    color: "#6B7280",
+    marginTop: 4,
+  },
+
+  /* Main Card */
+  card: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 16,
+  },
+  cardTitle: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#111827",
+    marginBottom: 6,
+  },
+  cardSubtitle: {
+    fontSize: 13,
+    color: "#6B7280",
+  },
+  highlight: {
+    color: "#2563EB",
+    fontWeight: "600",
+  },
+
+  /* Chart */
+  chartContainer: {
+    marginTop: 14,
+    height: 90,
+    borderRadius: 14,
+    backgroundColor: "#F1F5F9",
+    justifyContent: "center",
+    paddingHorizontal: 12,
+  },
+  fakeLine: {
+    height: 2,
+    backgroundColor: "#3B82F6",
+    borderRadius: 2,
+  },
+
+  /* Alerts */
+  alertCard: {
+    flexDirection: "row",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    padding: 14,
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  iconWrapper: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  successBg: {
+    backgroundColor: "#DCFCE7",
+  },
+  warningBg: {
+    backgroundColor: "#FFEDD5",
+  },
+  alertText: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  alertTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#111827",
+  },
+  alertDescription: {
+    fontSize: 13,
+    color: "#6B7280",
+    marginTop: 2,
+  },
+});
+----------------------------------------
+
+ID inside Insights page without API CALLS
+
+import { Ionicons } from "@expo/vector-icons";
+import { router, useLocalSearchParams } from "expo-router";
+import React, { useMemo, useState } from "react";
+import {
+    Share,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+
+type InsightSentiment = "positive" | "negative" | "neutral";
+
+type InsightPayload = {
+  id: string;
+  sentiment: InsightSentiment;
+  summary: string;
+  actionPoints: string;
+  recommendations: string;
+};
+
+const SPENTRIFY_BLUE = "#3B82F6";
+
+/* TEMP MOCK DATA (AI/BACKEND LATER) */
+const MOCK_INSIGHTS: Record<string, InsightPayload> = {
+  "weekly-trend": {
+    id: "weekly-trend",
+    sentiment: "neutral",
+    summary:
+      "Your weekly spending increased compared to last week. This could be due to more dining out and transport costs.",
+    actionPoints:
+      "• Review your top spending categories\n• Set a weekly dining cap\n• Track daily expenses",
+    recommendations:
+      "Allocate fixed weekly budgets and enable reminders before weekends.",
+  },
+  "under-budget": {
+    id: "under-budget",
+    sentiment: "positive",
+    summary:
+      "You stayed under budget by avoiding unnecessary purchases and maintaining consistent spending.",
+    actionPoints:
+      "• Keep your budget plan\n• Save extra funds\n• Set a small reward",
+    recommendations:
+      "Move extra funds into savings or upcoming bills.",
+  },
+  "subscription-alert": {
+    id: "subscription-alert",
+    sentiment: "negative",
+    summary:
+      "Subscription costs increased, which may affect your monthly budget.",
+    actionPoints:
+      "• Review subscriptions\n• Cancel unused ones\n• Downgrade plans",
+    recommendations:
+      "Set a subscription limit and review monthly.",
+  },
+};
+
+type TabKey = "summary" | "actionPoints" | "recommendations";
+
+export default function InsightDetailScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const [activeTab, setActiveTab] = useState<TabKey>("summary");
+
+  const insight = useMemo(() => {
+    return typeof id === "string" ? MOCK_INSIGHTS[id] : null;
+  }, [id]);
+
+  const tabContent = useMemo(() => {
+    if (!insight) return "No data available.";
+    if (activeTab === "summary") return insight.summary;
+    if (activeTab === "actionPoints") return insight.actionPoints;
+    return insight.recommendations;
+  }, [activeTab, insight]);
+
+  const handleShare = async () => {
+    try {
+      await Share.share({
+        message: tabContent,
+      });
+    } catch {}
+  };
+
+  return (
+    <SafeAreaView style={styles.safeArea} edges={["top"]}>
+      <View style={styles.container}>
+        {/* HEADER — MATCHES NOTIFICATIONS */}
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()}>
+            <Ionicons name="chevron-back" size={24} color="#111827" />
+          </TouchableOpacity>
+
+          <Text style={styles.headerTitle}>Insight</Text>
+
+          {/* SETTINGS → MORE TAB (FIXED) */}
+          <TouchableOpacity onPress={() => router.push("/(tabs)/more")}>
+            <Ionicons name="settings-outline" size={22} color="#111827" />
+          </TouchableOpacity>
+        </View>
+
+        {/* EMOJI / ICON */}
+        <View style={styles.emojiCard}>
+          <Text style={styles.emoji}>🧠</Text>
+        </View>
+
+        {/* TABS */}
+        <View style={styles.tabs}>
+          <Tab label="Summary" active={activeTab === "summary"} onPress={() => setActiveTab("summary")} />
+          <Tab label="Action Points" active={activeTab === "actionPoints"} onPress={() => setActiveTab("actionPoints")} />
+          <Tab label="Recommendations" active={activeTab === "recommendations"} onPress={() => setActiveTab("recommendations")} />
+        </View>
+
+        {/* CONTENT */}
+        <View style={styles.contentCard}>
+          <Text style={styles.contentText}>{tabContent}</Text>
+        </View>
+
+        {/* SHARE */}
+        <TouchableOpacity style={styles.shareBtn} onPress={handleShare}>
+          <Text style={styles.shareText}>Share Result</Text>
+          <Ionicons name="share-outline" size={18} color="#fff" />
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+/* TAB BUTTON */
+function Tab({
+  label,
+  active,
+  onPress,
+}: {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      style={[styles.tabBtn, active && styles.tabBtnActive]}
+    >
+      <Text style={[styles.tabText, active && styles.tabTextActive]}>
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
+/* STYLES */
+const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: "#F6F7FB",
+  },
+  container: {
+    flex: 1,
+    paddingHorizontal: 18,
+  },
+
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 14,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#111827",
+  },
+
+  emojiCard: {
+    backgroundColor: "#fff",
+    borderRadius: 18,
+    paddingVertical: 20,
+    alignItems: "center",
+    marginTop: 6,
+  },
+  emoji: {
+    fontSize: 40,
+  },
+
+  tabs: {
+    flexDirection: "row",
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    marginTop: 14,
+    padding: 6,
+  },
+  tabBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  tabBtnActive: {
+    backgroundColor: SPENTRIFY_BLUE,
+  },
+  tabText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#6B7280",
+  },
+  tabTextActive: {
+    color: "#fff",
+  },
+
+  contentCard: {
+    backgroundColor: "#fff",
+    borderRadius: 18,
+    padding: 16,
+    marginTop: 12,
+    minHeight: 200,
+  },
+  contentText: {
+    fontSize: 13.5,
+    lineHeight: 20,
+    color: "#374151",
+  },
+
+  shareBtn: {
+    marginTop: 14,
+    backgroundColor: SPENTRIFY_BLUE,
+    paddingVertical: 14,
+    borderRadius: 16,
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 10,
+  },
+  shareText: {
+    color: "#fff",
+    fontWeight: "700",
+  },
+});
