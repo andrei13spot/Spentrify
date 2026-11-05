@@ -1,494 +1,558 @@
+// app/(tabs)/add.tsx
 import { Ionicons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
 import { useState } from "react";
 import {
-  FlatList,
+  Alert,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
+  ScrollView,
   StyleSheet,
   Switch,
   Text,
   TextInput,
   TouchableOpacity,
   View,
-  Alert 
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import TransactionConfirmedModal from "../../components/TransactionConfirmedModal";
 import TransactionErrorModal from "../../components/TransactionErrorModal";
+import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
 import { useNotifications } from "../../context/NotificationContext";
-import { useAuth } from "../../context/AuthContext"; 
 import { formatLocalDateKey } from "../../utils/date";
+import { THEME, getCategoryColor, getCategoryIcon } from "../../constants/theme";
+import { fonts } from "../../constants/fonts";
 
-/* ================= DATA ================= */
-
-const CATEGORIES = [
-  "Food",
-  "Groceries",
-  "Transportation",
-  "Electricity",
-  "Water",
-  "Internet",
-  "Rent",
-  "Entertainment",
-  "Shopping",
-  "Health",
-  "Education",
-  "Subscriptions",
-  "Others",
+const CANONICAL_CATEGORIES = [
+  { id: 1, name: "Food" },
+  { id: 2, name: "Groceries" },
+  { id: 3, name: "Transportation" },
+  { id: 4, name: "Electricity" },
+  { id: 5, name: "Water" },
+  { id: 6, name: "Internet" },
+  { id: 7, name: "Rent" },
+  { id: 8, name: "Entertainment" },
+  { id: 9, name: "Shopping" },
+  { id: 10, name: "Health" },
+  { id: 11, name: "Education" },
+  { id: 12, name: "Subscriptions" },
+  { id: 13, name: "Others" },
 ];
 
-const CATEGORY_MAP: Record<string, number> = {
-  "Food": 1,
-  "Groceries": 2, 
-  "Transportation": 3,
-  "Electricity": 4,
-  "Water": 5,
-  "Internet": 6,
-  "Rent": 7,
-  "Entertainment": 8,
-  "Shopping": 9,
-  "Health": 10,
-  "Education": 11,
-  "Subscriptions": 12,
-  "Others": 13,
-};
-
-/* ================= SCREEN ================= */
-
-export default function AddTransaction() {
-  /* ================= GLOBAL DATA ================= */
+export default function AddTransactionScreen() {
   const { addTransaction } = useData();
   const { user } = useAuth();
-  // Removed: useGoalsStore (Not needed anymore)
+  const { addNotification } = useNotifications();
 
-  /* ================= MODAL STATE ================= */
+  // Form State
+  const [amount, setAmount] = useState("");
+  const [details, setDetails] = useState("");
+  const [selectedCategoryId, setSelectedCategoryId] = useState<number>(1);
+  const [isReimbursable, setIsReimbursable] = useState(false);
+
+  const today = new Date();
+  const defaultDateStr = `${String(today.getMonth() + 1).padStart(2, "0")}/${String(today.getDate()).padStart(2, "0")}/${today.getFullYear()}`;
+  const [date, setDate] = useState(defaultDateStr);
+
+  // Modal State
   const [showModal, setShowModal] = useState(false);
   const [confirmedDate, setConfirmedDate] = useState("");
   const [confirmedTime, setConfirmedTime] = useState("");
-
-  /* ================= ERROR MODAL ================= */
   const [showError, setShowError] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  /* ================= NOTIFICATIONS ================= */
-  const { addNotification } = useNotifications();
-
-  /* ================= FORM STATE ================= */
-  const [amount, setAmount] = useState("");
-  const [details, setDetails] = useState("");
-  const [category, setCategory] = useState("Select Category");
-  const [isReimbursable, setIsReimbursable] = useState(false);
-  
-  const today = new Date();
-  const defaultDateStr = `${String(today.getMonth() + 1).padStart(2, '0')}/${String(today.getDate()).padStart(2, '0')}/${today.getFullYear()}`;
-  const [date, setDate] = useState(defaultDateStr);
-
-  /* ================= UI STATE ================= */
-  const [showCategory, setShowCategory] = useState(false);
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [loading, setLoading] = useState(false); 
-
-  /* ================= TEMP DATE INPUTS ================= */
-  const [tempMonth, setTempMonth] = useState("01");
-  const [tempDay, setTempDay] = useState("01");
-  const [tempYear, setTempYear] = useState("2026");
-
-  /* ================= INPUT HELPER ================= */
-  // Handles numeric input validation (removes letters)
-  const handleNumericInput = (text: string, setter: (value: string) => void) => {
-    const numericValue = text.replace(/[^0-9.,]/g, '');
-    setter(numericValue);
+  // Quick Amount Add
+  const handleQuickAdd = (value: number) => {
+    if (Platform.OS === "ios" || Platform.OS === "android") {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    }
+    const current = parseFloat(amount.replace(/,/g, "")) || 0;
+    setAmount((current + value).toString());
   };
 
-  /* ================= RESET ================= */
-
-  const resetForm = () => {
-    setAmount("");
-    setDetails("");
-    setCategory("Select Category");
-    setDate("01/01/2026");
-    setTempMonth("01");
-    setTempDay("01");
-    setTempYear("2026");
+  const handleAmountChange = (text: string) => {
+    const cleaned = text.replace(/[^0-9.]/g, "");
+    setAmount(cleaned);
   };
-
-  /* ================= CONFIRM  ================= */
 
   const handleConfirmTransaction = async () => {
-    // Safety check: user must be logged in
     if (!user || !user.id) {
-        Alert.alert("Error", "You must be logged in to save a transaction.");
-        return;
+      Alert.alert("Error", "You must be logged in to record an expense.");
+      return;
     }
 
-    // 1. Validation
-    if (!amount || Number(amount) <= 0) {
-      setErrorMessage("Please enter a valid amount.");
+    const numAmount = parseFloat(amount);
+    if (!numAmount || numAmount <= 0) {
+      setErrorMessage("Please enter a valid expense amount.");
       setShowError(true);
       return;
     }
 
     if (!details.trim()) {
-      setErrorMessage("Please add a description.");
+      setErrorMessage("Please add a note or merchant description.");
       setShowError(true);
       return;
     }
-
-    if (category === "Select Category") {
-      setErrorMessage("Please select a category.");
-      setShowError(true);
-      return;
-    }
-
-    // 2. Prepare Data for UI Updates
-    const now = new Date();
-    const formattedDate = now.toLocaleDateString();
-    const formattedTime = now.toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
 
     setLoading(true);
 
     try {
-        // 3. BACKEND INTEGRATION
-        const dbCategoryId = CATEGORY_MAP[category] || 13;
+      const now = new Date();
+      const formattedDate = now.toLocaleDateString();
+      const formattedTime = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
-        const dateParts = date.split('/'); 
-        const localDate = formatLocalDateKey(
-          new Date(
-            parseInt(dateParts[2]),
-            parseInt(dateParts[0]) - 1,
-            parseInt(dateParts[1])
-          )
-        );
+      const dateParts = date.split("/");
+      const localDate = formatLocalDateKey(
+        new Date(
+          parseInt(dateParts[2], 10),
+          parseInt(dateParts[0], 10) - 1,
+          parseInt(dateParts[1], 10)
+        )
+      );
 
-        const payload = {
-            amount: parseFloat(amount),
-            merchant_name: details, 
-            description: details,
-            category_id: dbCategoryId,
-            transaction_date: localDate,
-            source_type: 'Manual',
-            is_manual: 1,
-            is_reimbursable: isReimbursable ? 1 : 0
-        };
+      const categoryObj = CANONICAL_CATEGORIES.find((c) => c.id === selectedCategoryId) || CANONICAL_CATEGORIES[0];
 
-        console.log("Saving to backend for user:", user.id);
+      const payload = {
+        amount: numAmount,
+        merchant_name: details.trim(),
+        description: details.trim(),
+        category_id: categoryObj.id,
+        transaction_date: localDate,
+        source_type: "Manual",
+        is_manual: 1,
+        is_reimbursable: isReimbursable ? 1 : 0,
+      };
 
-        await addTransaction(payload);
-        console.log("Saved to database.");
+      await addTransaction(payload);
 
-        // 4. Update Notifications
-        addNotification({
-            title: "Transaction Confirmed",
-            message: `₱${amount} • ${category}\n${details}`,
-            date: formattedDate,
-        });
+      addNotification({
+        title: "Transaction Confirmed",
+        message: `₱${numAmount.toLocaleString()} • ${categoryObj.name}\n${details.trim()}`,
+        date: formattedDate,
+      });
 
-        setConfirmedDate(formattedDate);
-        setConfirmedTime(formattedTime);
-        setShowModal(true);
-
-    } catch (error) {
-        console.error("Backend Error:", error);
-        setErrorMessage("Failed to save to database. Check connection.");
-        setShowError(true);
+      setConfirmedDate(formattedDate);
+      setConfirmedTime(formattedTime);
+      setShowModal(true);
+    } catch (err: any) {
+      console.error("Save transaction error:", err);
+      setErrorMessage("Failed to save transaction. Please check your connection.");
+      setShowError(true);
     } finally {
-        setLoading(false);
+      setLoading(false);
     }
   };
 
-  /* ================= DATE CONFIRM ================= */
-
-  const confirmDate = () => {
-    setDate(`${tempMonth}/${tempDay}/${tempYear}`);
-    setShowDatePicker(false);
-  };
-
-  /* ================= UI ================= */
+  const selectedCategoryObj = CANONICAL_CATEGORIES.find((c) => c.id === selectedCategoryId) || CANONICAL_CATEGORIES[0];
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.container}>
-        {/* HEADER */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
-            <Ionicons name="chevron-back" size={26} color="#111827" />
-          </TouchableOpacity>
-
-          <Text style={styles.headerTitle}>
-            Add Transaction
-          </Text>
-
-          <View style={{ width: 26 }} />
-        </View>
-
-        {/* AMOUNT */}
-        <Text style={styles.label}>Amount</Text>
-        <View style={styles.amountBox}>
-          <Text style={styles.currency}>₱</Text>
-          <TextInput
-            placeholder="0.00"
-            keyboardType="decimal-pad" 
-            value={amount}
-            onChangeText={(text) => handleNumericInput(text, setAmount)}
-            style={styles.amountInput}
-          />
-        </View>
-
-        {/* DETAILS */}
-        <Text style={styles.label}>Details</Text>
-        <TextInput
-          placeholder="Enter description"
-          value={details}
-          onChangeText={setDetails}
-          style={styles.input}
-        />
-
-        {/* CATEGORY & DATE */}
-        <View style={styles.row}>
+    <SafeAreaView style={styles.safeArea} edges={["top"]}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={{ flex: 1 }}
+      >
+        {/* Top Header */}
+        <View style={styles.topBar}>
           <TouchableOpacity
-            style={styles.inputHalf}
-            onPress={() => setShowCategory(true)}
+            activeOpacity={0.7}
+            style={styles.backBtn}
+            onPress={() => router.replace("/(tabs)/home")}
           >
-            <Text style={styles.inputText}>{category}</Text>
-            <Ionicons name="chevron-down" size={18} />
+            <Ionicons name="close" size={22} color={THEME.text} />
           </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.inputHalf}
-            onPress={() => setShowDatePicker(true)}
-          >
-            <Text style={styles.inputText}>{date}</Text>
-            <Ionicons name="calendar-outline" size={18} />
-          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Record Expense</Text>
+          <View style={{ width: 40 }} />
         </View>
 
-        {/* REIMBURSABLE TOGGLE */}
-        <View style={styles.reimbursableRow}>
-          <View style={styles.reimbursableLabelContainer}>
-            <Ionicons name="receipt-outline" size={20} color="#3B82F6" />
-            <Text style={styles.reimbursableLabel}>
-              Mark as Reimbursable
-            </Text>
-          </View>
-          <Switch
-            value={isReimbursable}
-            onValueChange={setIsReimbursable}
-            trackColor={{ false: "#D1D5DB", true: "#3B82F6" }}
-            thumbColor="#FFFFFF"
-          />
-        </View>
-
-        {/* CONFIRM */}
-        <TouchableOpacity
-          style={styles.confirmButton}
-          onPress={handleConfirmTransaction}
-          disabled={loading}
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
         >
-          <Text style={styles.confirmText}>
-            Confirm Transaction
-          </Text>
-        </TouchableOpacity>
+          {/* Hero Amount Input Card */}
+          <View style={styles.heroCard}>
+            <Text style={styles.heroLabel}>ENTER AMOUNT</Text>
+            <View style={styles.amountInputRow}>
+              <Text style={styles.pesoSign}>₱</Text>
+              <TextInput
+                style={styles.amountInput}
+                value={amount}
+                onChangeText={handleAmountChange}
+                placeholder="0.00"
+                placeholderTextColor="#94A3B8"
+                keyboardType="decimal-pad"
+                autoFocus
+              />
+            </View>
 
-        {/* CATEGORY MODAL */}
-        <Modal transparent animationType="fade" visible={showCategory}>
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalBox}>
-              <FlatList
-                data={CATEGORIES}
-                keyExtractor={(item) => item}
-                renderItem={({ item }) => (
-                  <TouchableOpacity
-                    style={styles.modalItem}
-                    onPress={() => {
-                      setCategory(item);
-                      setShowCategory(false);
-                    }}
+            {/* Quick Denomination Chips */}
+            <View style={styles.quickChipsRow}>
+              {[100, 500, 1000].map((val) => (
+                <TouchableOpacity
+                  key={val}
+                  activeOpacity={0.7}
+                  style={styles.chip}
+                  onPress={() => handleQuickAdd(val)}
+                >
+                  <Text style={styles.chipText}>+₱{val}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* Category Picker Section */}
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Category</Text>
+            <Text style={styles.sectionSub}>{selectedCategoryObj.name}</Text>
+          </View>
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.categoryScroll}
+          >
+            {CANONICAL_CATEGORIES.map((cat) => {
+              const isSelected = cat.id === selectedCategoryId;
+              const catColor = getCategoryColor(cat.name);
+              const catIcon = getCategoryIcon(cat.name);
+
+              return (
+                <TouchableOpacity
+                  key={cat.id}
+                  activeOpacity={0.75}
+                  style={[
+                    styles.catPill,
+                    isSelected && {
+                      borderColor: catColor,
+                      backgroundColor: `${catColor}14`,
+                    },
+                  ]}
+                  onPress={() => {
+                    if (Platform.OS === "ios" || Platform.OS === "android") {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                    }
+                    setSelectedCategoryId(cat.id);
+                  }}
+                >
+                  <View
+                    style={[
+                      styles.catIconWrap,
+                      { backgroundColor: isSelected ? catColor : "#F1F5F9" },
+                    ]}
                   >
-                    <Text style={styles.modalText}>{item}</Text>
-                  </TouchableOpacity>
-                )}
+                    <Ionicons
+                      name={catIcon as any}
+                      size={18}
+                      color={isSelected ? "#FFFFFF" : "#64748B"}
+                    />
+                  </View>
+                  <Text
+                    style={[
+                      styles.catName,
+                      isSelected && { color: catColor, fontFamily: fonts.heading },
+                    ]}
+                  >
+                    {cat.name}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
+          {/* Details & Merchant Input */}
+          <View style={styles.formSection}>
+            <Text style={styles.fieldLabel}>Merchant / Description</Text>
+            <View style={styles.inputContainer}>
+              <Ionicons name="storefront-outline" size={18} color="#94A3B8" style={styles.fieldIcon} />
+              <TextInput
+                style={styles.textInput}
+                value={details}
+                onChangeText={setDetails}
+                placeholder="e.g., Starbucks, Shell, Jollibee"
+                placeholderTextColor="#94A3B8"
               />
             </View>
           </View>
-        </Modal>
 
-        {/* DATE PICKER */}
-        <Modal transparent animationType="slide" visible={showDatePicker}>
-          <View style={styles.modalOverlay}>
-            <View style={styles.dateBox}>
-              <Text style={styles.modalTitle}>Select Date</Text>
-
-              <View style={styles.dateRow}>
-                <TextInput
-                  style={styles.dateInput}
-                  value={tempMonth}
-                  onChangeText={setTempMonth}
-                  keyboardType="numeric"
-                  placeholder="MM"
-                  maxLength={2}
-                />
-                <TextInput
-                  style={styles.dateInput}
-                  value={tempDay}
-                  onChangeText={setTempDay}
-                  keyboardType="numeric"
-                  placeholder="DD"
-                  maxLength={2}
-                />
-                <TextInput
-                  style={styles.dateInput}
-                  value={tempYear}
-                  onChangeText={setTempYear}
-                  keyboardType="numeric"
-                  placeholder="YYYY"
-                  maxLength={4}
-                />
-              </View>
-
-              <TouchableOpacity
-                style={styles.confirmButton}
-                onPress={confirmDate}
-              >
-                <Text style={styles.confirmText}>Confirm Date</Text>
-              </TouchableOpacity>
+          {/* Date Row */}
+          <View style={styles.formSection}>
+            <Text style={styles.fieldLabel}>Date of Expense</Text>
+            <View style={styles.inputContainer}>
+              <Ionicons name="calendar-outline" size={18} color="#94A3B8" style={styles.fieldIcon} />
+              <TextInput
+                style={styles.textInput}
+                value={date}
+                onChangeText={setDate}
+                placeholder="MM/DD/YYYY"
+                placeholderTextColor="#94A3B8"
+              />
             </View>
           </View>
-        </Modal>
 
-        {/* ERROR MODAL */}
-        <TransactionErrorModal
-          visible={showError}
-          message={errorMessage}
-          onRetry={() => setShowError(false)}
-        />
+          {/* Reimbursable Expense Toggle Card */}
+          <View style={styles.toggleCard}>
+            <View style={styles.toggleIconWrap}>
+              <Ionicons name="briefcase-outline" size={20} color="#0284C7" />
+            </View>
+            <View style={styles.toggleTextCol}>
+              <Text style={styles.toggleTitle}>Reimbursable Expense</Text>
+              <Text style={styles.toggleSub}>Flag for employee or company reimbursement claims</Text>
+            </View>
+            <Switch
+              value={isReimbursable}
+              onValueChange={setIsReimbursable}
+              trackColor={{ false: "#CBD5E1", true: THEME.primary }}
+              thumbColor="#FFFFFF"
+            />
+          </View>
 
-        {/* SUCCESS MODAL */}
+          {/* Save Button CTA */}
+          <TouchableOpacity
+            activeOpacity={0.85}
+            style={[styles.submitButton, loading && { opacity: 0.7 }]}
+            onPress={handleConfirmTransaction}
+            disabled={loading}
+          >
+            <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
+            <Text style={styles.submitText}>
+              {loading ? "Recording Expense..." : "Save Expense"}
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
+
+        {/* Success Modal */}
         <TransactionConfirmedModal
           visible={showModal}
           date={confirmedDate}
           time={confirmedTime}
           onClose={() => {
             setShowModal(false);
-            resetForm();
+            setAmount("");
+            setDetails("");
             router.replace("/(tabs)/home");
           }}
         />
-      </View>
+
+        {/* Error Modal */}
+        <TransactionErrorModal
+          visible={showError}
+          message={errorMessage}
+          onRetry={() => setShowError(false)}
+        />
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
-/* ================= STYLES ================= */
-
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: "#FFFFFF" },
-  container: { flex: 1, padding: 20 },
-  header: { flexDirection: "row", alignItems: "center", marginBottom: 20 },
-  headerTitle: {
+  safeArea: {
     flex: 1,
-    textAlign: "center",
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#111827",
+    backgroundColor: THEME.canvas,
   },
-  label: { fontSize: 12, color: "#6B7280", marginBottom: 6 },
-  amountBox: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1.5,
-    borderColor: "#3B82F6",
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 16,
-  },
-  currency: { fontSize: 14, marginRight: 8, color: "#6B7280" },
-  amountInput: { fontSize: 20, flex: 1 },
-  input: {
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 16,
-  },
-  row: { flexDirection: "row", justifyContent: "space-between", marginBottom: 24 },
-  inputHalf: {
-    width: "48%",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    borderRadius: 12,
-    padding: 14,
+  topBar: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
-  inputText: { color: "#374151" },
-  confirmButton: {
-    backgroundColor: "#3B82F6",
-    padding: 16,
-    borderRadius: 14,
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: THEME.card,
+    justifyContent: "center",
     alignItems: "center",
+    ...THEME.shadows.sm,
   },
-  confirmText: { color: "#FFFFFF", fontWeight: "600", fontSize: 16 },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.3)",
+  headerTitle: {
+    fontSize: 17,
+    fontFamily: fonts.heading,
+    color: THEME.text,
+  },
+  scrollContent: {
+    paddingHorizontal: 18,
+    paddingBottom: 40,
+  },
+  heroCard: {
+    backgroundColor: THEME.card,
+    borderRadius: THEME.radius.xl,
+    padding: 24,
+    alignItems: "center",
+    marginTop: 8,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: THEME.borderLight,
+    ...THEME.shadows.card,
+  },
+  heroLabel: {
+    fontSize: 11,
+    fontFamily: fonts.body,
+    color: THEME.sub,
+    letterSpacing: 1,
+    marginBottom: 10,
+  },
+  amountInputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 16,
+  },
+  pesoSign: {
+    fontSize: 34,
+    fontFamily: fonts.heading,
+    color: THEME.muted,
+    marginRight: 6,
+  },
+  amountInput: {
+    fontSize: 42,
+    fontFamily: fonts.heading,
+    color: THEME.text,
+    minWidth: 160,
+    textAlign: "center",
+  },
+  quickChipsRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  chip: {
+    backgroundColor: THEME.primaryLight,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: THEME.radius.pill,
+    borderWidth: 1,
+    borderColor: "rgba(37, 99, 235, 0.2)",
+  },
+  chipText: {
+    fontSize: 12,
+    fontFamily: fonts.heading,
+    color: THEME.primary,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    fontSize: 15,
+    fontFamily: fonts.heading,
+    color: THEME.text,
+  },
+  sectionSub: {
+    fontSize: 13,
+    fontFamily: fonts.body,
+    color: THEME.primary,
+  },
+  categoryScroll: {
+    paddingRight: 10,
+    gap: 10,
+    marginBottom: 24,
+  },
+  catPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: THEME.card,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: THEME.radius.pill,
+    borderWidth: 1.5,
+    borderColor: THEME.borderLight,
+    gap: 8,
+  },
+  catIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     justifyContent: "center",
     alignItems: "center",
   },
-  modalBox: {
-    width: "80%",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 12,
-    maxHeight: 400, 
+  catName: {
+    fontSize: 13,
+    fontFamily: fonts.body,
+    color: THEME.text,
   },
-  modalItem: { padding: 14 },
-  modalText: { fontSize: 16 },
-  dateBox: {
-    width: "85%",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 20,
+  formSection: {
+    marginBottom: 18,
   },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    marginBottom: 16,
-    textAlign: "center",
+  fieldLabel: {
+    fontSize: 13,
+    fontFamily: fonts.body,
+    color: THEME.sub,
+    marginBottom: 8,
   },
-  dateRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 20 },
-  dateInput: {
+  inputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: THEME.card,
+    borderRadius: THEME.radius.lg,
+    paddingHorizontal: 14,
+    height: 52,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
-    borderRadius: 10,
-    padding: 12,
-    width: "30%",
-    textAlign: "center",
+    borderColor: THEME.border,
   },
-  reimbursableRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 12,
-    paddingHorizontal: 4,
-    marginBottom: 16,
-    backgroundColor: "#F9FAFB",
-    borderRadius: 12,
-    padding: 14,
+  fieldIcon: {
+    marginRight: 10,
   },
-  reimbursableLabelContainer: {
+  textInput: {
+    flex: 1,
+    fontSize: 15,
+    fontFamily: fonts.body,
+    color: THEME.text,
+  },
+  toggleCard: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    backgroundColor: THEME.card,
+    borderRadius: THEME.radius.lg,
+    padding: 16,
+    marginBottom: 26,
+    borderWidth: 1,
+    borderColor: THEME.borderLight,
+    ...THEME.shadows.sm,
   },
-  reimbursableLabel: {
+  toggleIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#E0F2FE",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  toggleTextCol: {
+    flex: 1,
+    paddingRight: 10,
+  },
+  toggleTitle: {
     fontSize: 14,
-    color: "#374151",
-    fontWeight: "500",
+    fontFamily: fonts.heading,
+    color: THEME.text,
+    marginBottom: 2,
+  },
+  toggleSub: {
+    fontSize: 11,
+    fontFamily: fonts.body,
+    color: THEME.sub,
+    lineHeight: 15,
+  },
+  submitButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: THEME.primary,
+    height: 54,
+    borderRadius: THEME.radius.lg,
+    gap: 8,
+    ...THEME.shadows.glow,
+  },
+  submitText: {
+    fontSize: 16,
+    fontFamily: fonts.heading,
+    color: "#FFFFFF",
   },
 });

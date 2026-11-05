@@ -11,8 +11,8 @@ console.log("INSPECTING DATABASE (DECRYPTED VIEW)...\n");
 
 db.serialize(() => {
   
-  // 1. CHECK SAVINGS GOALS
-  console.log("--- SAVINGS GOALS ---");
+  // 1. CHECK GOALS
+  console.log("--- GOALS ---");
   db.all("SELECT * FROM SavingsGoals", (err, rows) => {
     if (err) {
       console.log("Error reading Goals:", err.message);

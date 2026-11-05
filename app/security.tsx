@@ -44,7 +44,7 @@ export default function SecurityScreen() {
   const handleDelete = () => {
     Alert.alert(
       "Delete Account",
-      "This action cannot be undone. All your transactions, savings goals, insights, and profile data will be permanently deleted.",
+      "This action cannot be undone. All your transactions, goals, insights, and profile data will be permanently deleted.",
       [
         { text: "Cancel", style: "cancel" },
         { text: "Delete Permanently", style: "destructive", onPress: confirmDelete }

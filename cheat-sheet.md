@@ -219,7 +219,7 @@
     - `transactionsService.js` — CRUD with encryption.
     - `categoriesService.js` — categories and SMS parsing.
     - `budgetsService.js` — budgets CRUD (reads `Budgets` table; `createBudget` inserts into a `Goals` table, which is not created in `connection.js`).
-    - `goalsService.js` — savings goals CRUD (uses `SavingsGoals` table).
+    - `goalsService.js` — goals CRUD (uses `SavingsGoals` table).
     - `analyticsService.js` — spending summaries, category breakdowns, trends.
     - `aiInsightsService.js` — insight generation + persistence.
     - `mlInsightsService.js` — statistical/ML-style insights (no external ML lib).
@@ -472,7 +472,7 @@
 - `status`
 - `created_at`
 
-**Why it exists**: Savings goals with encrypted amounts.
+**Why it exists**: Goals with encrypted amounts.
 
 ### Relationships
 - **Users → Transactions**: one user has many transactions.

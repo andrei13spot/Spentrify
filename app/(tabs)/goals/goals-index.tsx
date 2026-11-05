@@ -1,14 +1,30 @@
-import React, { useEffect } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
+// app/(tabs)/goals/goals-index.tsx
+import React, { useEffect, useMemo } from 'react';
+import {
+  FlatList,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useGoalsStore } from '../../goals-store';
+import { useGoalsStore, type Goal } from '../../goals-store';
 import { useAuth } from '../../../context/AuthContext';
+import { THEME } from '../../../constants/theme';
+import { fonts } from '../../../constants/fonts';
+
+const formatCurrency = (val: string | number) => {
+  const num = typeof val === 'string' ? parseFloat(val.replace(/,/g, '')) || 0 : val;
+  return '₱ ' + num.toLocaleString('en-PH', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+};
 
 export default function GoalsIndex() {
   const router = useRouter();
-  const { user } = useAuth(); 
-  const { goals, fetchGoals } = useGoalsStore();
+  const { user } = useAuth();
+  const { goals, loading, fetchGoals } = useGoalsStore();
 
   useEffect(() => {
     if (user?.id) {
@@ -16,82 +32,145 @@ export default function GoalsIndex() {
     }
   }, [user?.id, fetchGoals]);
 
-  const formatMoney = (value: string) => {
-    return value.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  const onRefresh = () => {
+    if (user?.id) {
+      fetchGoals(user.id);
+    }
   };
 
-  const renderGoalCard = ({ item }: { item: any }) => {
-    // 1. Calculate Progress
+  // Compute total progress across all active goals
+  const summary = useMemo(() => {
+    let totalTarget = 0;
+    let totalSaved = 0;
+    let achievedCount = 0;
+
+    goals.forEach((g) => {
+      const target = parseFloat(g.amount.replace(/,/g, '')) || 0;
+      const current = parseFloat(g.currentSavings?.replace(/,/g, '') || '0') || 0;
+      totalTarget += target;
+      totalSaved += current;
+      if (target > 0 && current >= target) {
+        achievedCount += 1;
+      }
+    });
+
+    const percent = totalTarget > 0 ? Math.min(100, Math.round((totalSaved / totalTarget) * 100)) : 0;
+    return { totalTarget, totalSaved, percent, totalGoals: goals.length, achievedCount };
+  }, [goals]);
+
+  const renderGoalCard = ({ item }: { item: Goal }) => {
     const target = parseFloat(item.amount.replace(/,/g, '')) || 0;
     const current = parseFloat(item.currentSavings?.replace(/,/g, '') || '0') || 0;
-    
-    let percent = 0;
-    if (target > 0) {
-      percent = (current / target) * 100;
-    }
-    
+    const percent = target > 0 ? (current / target) * 100 : 0;
     const progressWidth = Math.min(Math.max(percent, 0), 100);
+    const isAchieved = percent >= 100;
+    const remaining = Math.max(0, target - current);
 
-    let statusColor = '#4287f5'; 
-    let statusLabel = 'In Progress';
-
-    if (percent >= 100) {
-      statusColor = '#2ecc71'; 
-      statusLabel = 'Goal Achieved';
-    } else if (percent < 20) {
-      statusColor = '#FF9800'
-      statusLabel = 'In Progress';
-    }
+    const statusBadge = isAchieved
+      ? { label: 'Achieved', color: THEME.success, bg: THEME.successLight, icon: 'checkmark-circle' as const }
+      : percent >= 50
+      ? { label: 'On Track', color: THEME.primary, bg: THEME.primaryLight, icon: 'trending-up' as const }
+      : { label: 'In Progress', color: THEME.warning, bg: THEME.warningLight, icon: 'time-outline' as const };
 
     return (
-      <TouchableOpacity 
-        onPress={() => router.push({ 
-          pathname: '/(tabs)/goals/edit-goal', 
-          params: { id: item.id } 
-        })}
-        activeOpacity={0.8} 
+      <TouchableOpacity
+        style={styles.card}
+        activeOpacity={0.8}
+        onPress={() =>
+          router.push({
+            pathname: '/(tabs)/goals/edit-goal',
+            params: { id: item.id },
+          })
+        }
       >
-        <View style={styles.card}>
-          <View style={styles.cardTopRow}>
-            <Text style={styles.goalName}>{item.name}</Text>
-            <Text style={[styles.percentText, { color: statusColor }]}>
-              {Math.round(percent)}%
+        {/* Top Row: Icon + Name + Status Badge */}
+        <View style={styles.cardHeader}>
+          <View style={styles.cardHeaderLeft}>
+            <View style={[styles.goalIconContainer, { backgroundColor: statusBadge.bg }]}>
+              <Ionicons
+                name={isAchieved ? 'trophy' : 'flag'}
+                size={20}
+                color={statusBadge.color}
+              />
+            </View>
+            <View style={styles.goalInfo}>
+              <Text style={styles.goalName} numberOfLines={1}>
+                {item.name}
+              </Text>
+              {item.date ? (
+                <Text style={styles.goalDate}>
+                  Target: {item.date}
+                </Text>
+              ) : null}
+            </View>
+          </View>
+
+          <View style={[styles.badge, { backgroundColor: statusBadge.bg }]}>
+            <Ionicons name={statusBadge.icon} size={12} color={statusBadge.color} style={{ marginRight: 4 }} />
+            <Text style={[styles.badgeText, { color: statusBadge.color }]}>
+              {statusBadge.label}
             </Text>
           </View>
+        </View>
 
-          <Text style={[styles.statusText, { color: statusColor }]}>
-            {statusLabel}
-          </Text>
-
-          <View style={styles.progressBarBackground}>
-            <View 
+        {/* Progress Bar with Dual-Tone Fill */}
+        <View style={styles.progressContainer}>
+          <View style={styles.progressBarTrack}>
+            <View
               style={[
-                styles.progressBarFill, 
-                { width: `${progressWidth}%`, backgroundColor: statusColor }
-              ]} 
+                styles.progressBarFill,
+                {
+                  width: `${progressWidth}%`,
+                  backgroundColor: statusBadge.color,
+                },
+              ]}
             />
           </View>
-
-          <Text style={styles.amountText}>
-            <Text style={styles.boldAmount}>PHP {formatMoney(item.currentSavings || '0')}</Text>
-            <Text style={styles.greyText}> of PHP {formatMoney(item.amount)}</Text>
+          <Text style={[styles.percentLabel, { color: statusBadge.color }]}>
+            {Math.round(percent)}%
           </Text>
         </View>
+
+        {/* Bottom Amounts */}
+        <View style={styles.amountsRow}>
+          <View>
+            <Text style={styles.amountSavedLabel}>Current Saved</Text>
+            <Text style={styles.amountSavedValue}>{formatCurrency(current)}</Text>
+          </View>
+          <View style={styles.amountRightCol}>
+            <Text style={styles.amountTargetLabel}>Target</Text>
+            <Text style={styles.amountTargetValue}>{formatCurrency(target)}</Text>
+          </View>
+        </View>
+
+        {/* Footer info pill */}
+        {!isAchieved && remaining > 0 && (
+          <View style={styles.cardFooter}>
+            <Ionicons name="sparkles-outline" size={12} color={THEME.sub} style={{ marginRight: 4 }} />
+            <Text style={styles.footerText}>
+              {formatCurrency(remaining)} remaining to achieve this goal
+            </Text>
+          </View>
+        )}
       </TouchableOpacity>
     );
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      
-      {/* HEADER */}
-      <View style={styles.headerContainer}>
-        <Text style={styles.headerTitle}>Savings Goals</Text>
-        <TouchableOpacity 
-          style={styles.addButton} 
+    <SafeAreaView style={styles.container} edges={['top']}>
+      {/* Top Header */}
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.title}>Goals</Text>
+          <Text style={styles.subtitle}>Track targets & build wealth</Text>
+        </View>
+        <TouchableOpacity
+          style={styles.addButton}
+          activeOpacity={0.85}
           onPress={() => router.push('/(tabs)/goals/add-goal')}
         >
-          <Ionicons name="add" size={28} color="#FFF" />
+          <Ionicons name="add" size={20} color="#FFFFFF" />
+          <Text style={styles.addButtonText}>New Goal</Text>
         </TouchableOpacity>
       </View>
 
@@ -99,14 +178,81 @@ export default function GoalsIndex() {
         data={goals}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
-        
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons name="leaf-outline" size={60} color="#4287f5" style={styles.leafIcon} />
-            <Text style={styles.emptyText}>No goals yet. Start saving today!</Text>
-          </View>
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={loading}
+            onRefresh={onRefresh}
+            tintColor={THEME.primary}
+            colors={[THEME.primary]}
+          />
         }
-        
+        ListHeaderComponent={
+          goals.length > 0 ? (
+            <View style={styles.heroCard}>
+              <View style={styles.heroTop}>
+                <View>
+                  <Text style={styles.heroLabel}>TOTAL GOALS PROGRESS</Text>
+                  <Text style={styles.heroAmount}>{formatCurrency(summary.totalSaved)}</Text>
+                </View>
+                <View style={styles.heroPercentChip}>
+                  <Text style={styles.heroPercentText}>{summary.percent}%</Text>
+                </View>
+              </View>
+
+              {/* Master Progress Bar */}
+              <View style={styles.heroProgressTrack}>
+                <View
+                  style={[
+                    styles.heroProgressFill,
+                    { width: `${summary.percent}%` },
+                  ]}
+                />
+              </View>
+
+              {/* Stat Chips */}
+              <View style={styles.heroStatsRow}>
+                <View style={styles.heroStatItem}>
+                  <Text style={styles.heroStatValue}>{formatCurrency(summary.totalTarget)}</Text>
+                  <Text style={styles.heroStatLabel}>Total Target</Text>
+                </View>
+                <View style={styles.statDivider} />
+                <View style={styles.heroStatItem}>
+                  <Text style={styles.heroStatValue}>{summary.totalGoals}</Text>
+                  <Text style={styles.heroStatLabel}>Active Goals</Text>
+                </View>
+                <View style={styles.statDivider} />
+                <View style={styles.heroStatItem}>
+                  <Text style={[styles.heroStatValue, { color: THEME.success }]}>
+                    {summary.achievedCount}
+                  </Text>
+                  <Text style={styles.heroStatLabel}>Achieved</Text>
+                </View>
+              </View>
+            </View>
+          ) : null
+        }
+        ListEmptyComponent={
+          !loading ? (
+            <View style={styles.emptyContainer}>
+              <View style={styles.emptyIconCircle}>
+                <Ionicons name="trophy-outline" size={44} color={THEME.primary} />
+              </View>
+              <Text style={styles.emptyTitle}>No goals yet</Text>
+              <Text style={styles.emptyDescription}>
+                Set clear targets for your emergency fund, dream vacation, or next big milestone.
+              </Text>
+              <TouchableOpacity
+                style={styles.emptyActionBtn}
+                activeOpacity={0.85}
+                onPress={() => router.push('/(tabs)/goals/add-goal')}
+              >
+                <Ionicons name="add-circle" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
+                <Text style={styles.emptyActionText}>Create Your First Goal</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null
+        }
         renderItem={renderGoalCard}
       />
     </SafeAreaView>
@@ -114,103 +260,299 @@ export default function GoalsIndex() {
 }
 
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
-    backgroundColor: '#F9FAFB',
-    paddingTop: 10, 
+  container: {
+    flex: 1,
+    backgroundColor: THEME.canvas,
   },
-  headerContainer: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'center', 
-    paddingHorizontal: 16, 
-    paddingVertical: 12,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E6EAF2',
-  },
-  headerTitle: { 
-    fontSize: 18, 
-    fontWeight: '700', 
-    color: '#111827' 
-  },
-  addButton: {
-    width: 36, 
-    height: 36,
-    borderRadius: 18, 
-    backgroundColor: '#3B82F6', 
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#3B82F6',
-  },
-  listContent: { 
-    padding: 16,
-    flexGrow: 1, 
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 120, 
-  },
-  leafIcon: {
-    marginBottom: 16,
-    transform: [{ rotate: '-15deg' }] 
-  },
-  emptyText: { 
-    fontSize: 14, 
-    color: '#6B7280',
-    textAlign: 'center' 
-  },
-  card: {
-    backgroundColor: '#FFFFFF',
-    padding: 14,
-    borderRadius: 14,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#E6EAF2',
-  },
-  cardTopRow: {
+  header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 4,
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 16,
+    backgroundColor: THEME.canvas,
+  },
+  title: {
+    fontSize: 24,
+    fontFamily: fonts.heading,
+    color: THEME.text,
+  },
+  subtitle: {
+    fontSize: 13,
+    fontFamily: fonts.body,
+    color: THEME.sub,
+    marginTop: 2,
+  },
+  addButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: THEME.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: THEME.radius.pill,
+    ...THEME.shadows.sm,
+  },
+  addButtonText: {
+    fontSize: 13,
+    fontFamily: fonts.heading,
+    color: '#FFFFFF',
+    marginLeft: 4,
+  },
+  listContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 110, // Clearance for floating tab bar
+  },
+
+  /* Master Progress Hero Card */
+  heroCard: {
+    backgroundColor: THEME.card,
+    borderRadius: THEME.radius.lg,
+    padding: 18,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: THEME.borderLight,
+    ...THEME.shadows.sm,
+  },
+  heroTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 14,
+  },
+  heroLabel: {
+    fontSize: 11,
+    fontFamily: fonts.heading,
+    color: THEME.muted,
+    letterSpacing: 0.6,
+  },
+  heroAmount: {
+    fontSize: 26,
+    fontFamily: fonts.heading,
+    color: THEME.text,
+    marginTop: 4,
+  },
+  heroPercentChip: {
+    backgroundColor: THEME.primaryLight,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: THEME.radius.pill,
+  },
+  heroPercentText: {
+    fontSize: 14,
+    fontFamily: fonts.heading,
+    color: THEME.primary,
+  },
+  heroProgressTrack: {
+    height: 10,
+    backgroundColor: '#EEF2F6',
+    borderRadius: THEME.radius.pill,
+    overflow: 'hidden',
+    marginBottom: 16,
+  },
+  heroProgressFill: {
+    height: '100%',
+    backgroundColor: THEME.primary,
+    borderRadius: THEME.radius.pill,
+  },
+  heroStatsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: THEME.borderLight,
+  },
+  heroStatItem: {
+    alignItems: 'center',
+  },
+  heroStatValue: {
+    fontSize: 14,
+    fontFamily: fonts.heading,
+    color: THEME.text,
+  },
+  heroStatLabel: {
+    fontSize: 11,
+    fontFamily: fonts.body,
+    color: THEME.sub,
+    marginTop: 2,
+  },
+  statDivider: {
+    width: 1,
+    height: 24,
+    backgroundColor: THEME.borderLight,
+  },
+
+  /* Goal Card */
+  card: {
+    backgroundColor: THEME.card,
+    borderRadius: THEME.radius.lg,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: THEME.borderLight,
+    ...THEME.shadows.sm,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  cardHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 8,
+  },
+  goalIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  goalInfo: {
+    flex: 1,
   },
   goalName: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#111827',
+    fontSize: 15,
+    fontFamily: fonts.heading,
+    color: THEME.text,
   },
-  percentText: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  statusText: {
+  goalDate: {
     fontSize: 12,
-    fontWeight: '600',
+    fontFamily: fonts.body,
+    color: THEME.sub,
+    marginTop: 2,
+  },
+  badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: THEME.radius.pill,
+  },
+  badgeText: {
+    fontSize: 11,
+    fontFamily: fonts.heading,
+  },
+
+  /* Progress Track */
+  progressContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: 12,
   },
-  progressBarBackground: {
+  progressBarTrack: {
+    flex: 1,
     height: 8,
-    backgroundColor: '#E6EAF2',
-    borderRadius: 4,
-    marginBottom: 12,
-    width: '100%',
+    backgroundColor: '#EEF2F6',
+    borderRadius: THEME.radius.pill,
     overflow: 'hidden',
+    marginRight: 10,
   },
   progressBarFill: {
     height: '100%',
-    borderRadius: 4,
+    borderRadius: THEME.radius.pill,
   },
-  amountText: {
+  percentLabel: {
     fontSize: 12,
-    color: '#6B7280',
+    fontFamily: fonts.heading,
+    minWidth: 32,
+    textAlign: 'right',
   },
-  boldAmount: {
-    fontWeight: '700',
-    color: '#111827',
+
+  /* Amounts */
+  amountsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
   },
-  greyText: {
-    color: '#6B7280',
+  amountSavedLabel: {
+    fontSize: 11,
+    fontFamily: fonts.body,
+    color: THEME.sub,
+  },
+  amountSavedValue: {
+    fontSize: 15,
+    fontFamily: fonts.heading,
+    color: THEME.text,
+    marginTop: 2,
+  },
+  amountRightCol: {
+    alignItems: 'flex-end',
+  },
+  amountTargetLabel: {
+    fontSize: 11,
+    fontFamily: fonts.body,
+    color: THEME.sub,
+  },
+  amountTargetValue: {
+    fontSize: 14,
+    fontFamily: fonts.heading,
+    color: THEME.sub,
+    marginTop: 2,
+  },
+
+  cardFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: THEME.borderLight,
+  },
+  footerText: {
+    fontSize: 11,
+    fontFamily: fonts.body,
+    color: THEME.sub,
+  },
+
+  /* Empty State */
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+    paddingHorizontal: 24,
+  },
+  emptyIconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: THEME.primaryLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 18,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontFamily: fonts.heading,
+    color: THEME.text,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  emptyDescription: {
+    fontSize: 14,
+    fontFamily: fonts.body,
+    color: THEME.sub,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  emptyActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: THEME.primary,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: THEME.radius.pill,
+    ...THEME.shadows.sm,
+  },
+  emptyActionText: {
+    fontSize: 14,
+    fontFamily: fonts.heading,
+    color: '#FFFFFF',
   },
 });

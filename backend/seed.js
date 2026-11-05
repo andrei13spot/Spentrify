@@ -88,7 +88,7 @@ db.serialize(() => {
   });
   stmt.finalize();
 
-  // . INSERT SAVINGS GOALS
+  // . INSERT GOALS
   console.log("Setting up Goals...");
   
   const goals = [
