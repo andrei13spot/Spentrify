@@ -1,8 +1,11 @@
+// app/(tabs)/_layout.tsx
 import { Ionicons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import { Tabs, router } from "expo-router";
 import React, { useEffect } from "react";
 import {
   GestureResponderEvent,
+  Platform,
   StyleSheet,
   TouchableOpacity,
   View,
@@ -13,21 +16,30 @@ import {
 } from "react-native-safe-area-context";
 
 import { useAuth } from "../../context/AuthContext";
+import { THEME } from "../../constants/theme";
+import { fonts } from "../../constants/fonts";
 
-/* BIG CENTER ADD BUTTON */
+/* FLOATING CENTER ADD BUTTON */
 function BigAddButton({
   onPress,
 }: {
   onPress?: (e: GestureResponderEvent) => void;
 }) {
+  const handlePress = (e: GestureResponderEvent) => {
+    if (Platform.OS === "ios" || Platform.OS === "android") {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    }
+    onPress?.(e);
+  };
+
   return (
     <View style={styles.addSlot}>
       <TouchableOpacity
-        activeOpacity={0.85}
-        onPress={onPress}
+        activeOpacity={0.88}
+        onPress={handlePress}
         style={styles.addButton}
       >
-        <Ionicons name="add" size={30} color="#FFFFFF" />
+        <Ionicons name="add" size={28} color="#FFFFFF" />
       </TouchableOpacity>
     </View>
   );
@@ -44,28 +56,37 @@ export default function TabsLayout() {
     }
   }, [isAuthenticated]);
 
-  // Prevent flash of tabs before redirect
   if (!isAuthenticated) {
     return null;
   }
+
+  const bottomPosition = Math.max(12, insets.bottom);
 
   return (
     <SafeAreaView style={styles.safeArea} edges={["top"]}>
       <Tabs
         screenOptions={{
           headerShown: false,
-          tabBarActiveTintColor: "#3B82F6",
-          tabBarInactiveTintColor: "#9AA4B2",
+          tabBarActiveTintColor: THEME.primary,
+          tabBarInactiveTintColor: "#94A3B8",
           tabBarStyle: {
-            height: 74 + insets.bottom,
-            paddingBottom: 10 + insets.bottom,
-            paddingTop: 8,
-            borderTopWidth: 1,
-            borderTopColor: "#E6EAF2",
+            position: "absolute",
+            bottom: bottomPosition,
+            left: 16,
+            right: 16,
+            height: 64,
+            borderRadius: 32,
             backgroundColor: "#FFFFFF",
+            borderTopWidth: 0,
+            borderWidth: 1,
+            borderColor: "rgba(226, 232, 240, 0.85)",
+            paddingBottom: 8,
+            paddingTop: 8,
+            ...THEME.shadows.float,
           },
           tabBarLabelStyle: {
-            fontSize: 11,
+            fontSize: 10,
+            fontFamily: fonts.body,
             marginTop: 2,
           },
         }}
@@ -78,7 +99,7 @@ export default function TabsLayout() {
             tabBarIcon: ({ color, size, focused }) => (
               <Ionicons
                 name={focused ? "home" : "home-outline"}
-                size={size}
+                size={size - 2}
                 color={color}
               />
             ),
@@ -92,15 +113,15 @@ export default function TabsLayout() {
             title: "Insights",
             tabBarIcon: ({ color, size, focused }) => (
               <Ionicons
-                name={focused ? "time" : "time-outline"}
-                size={size}
+                name={focused ? "pie-chart" : "pie-chart-outline"}
+                size={size - 2}
                 color={color}
               />
             ),
           }}
         />
 
-        {/* ADD */}
+        {/* ADD ACTION */}
         <Tabs.Screen
           name="add"
           options={{
@@ -118,8 +139,8 @@ export default function TabsLayout() {
             title: "Goals",
             tabBarIcon: ({ color, size, focused }) => (
               <Ionicons
-                name={focused ? "radio-button-on" : "radio-button-off"}
-                size={size}
+                name={focused ? "flag" : "flag-outline"}
+                size={size - 2}
                 color={color}
               />
             ),
@@ -131,10 +152,10 @@ export default function TabsLayout() {
           name="more"
           options={{
             title: "More",
-            tabBarIcon: ({ color, size }) => (
+            tabBarIcon: ({ color, size, focused }) => (
               <Ionicons
-                name="ellipsis-horizontal"
-                size={size}
+                name={focused ? "ellipsis-horizontal-circle" : "ellipsis-horizontal-circle-outline"}
+                size={size - 2}
                 color={color}
               />
             ),
@@ -150,31 +171,27 @@ export default function TabsLayout() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#F9FAFB",
+    backgroundColor: THEME.canvas,
   },
 
   addSlot: {
-    width: 74,
+    width: 60,
     alignItems: "center",
+    justifyContent: "center",
     position: "relative",
   },
 
   addButton: {
     position: "absolute",
-    top: -18,
-    left: "55%",
-    transform: [{ translateX: -32 }],
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: "#3B82F6",
+    top: -20,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: THEME.primary,
     justifyContent: "center",
     alignItems: "center",
-
-    shadowColor: "#3B82F6",
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 10,
+    ...THEME.shadows.glow,
+    borderWidth: 3,
+    borderColor: "#FFFFFF",
   },
 });

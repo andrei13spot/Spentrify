@@ -14,21 +14,7 @@ import {
   View
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
-
-/**
- * Get API base URL (same logic as AuthContext)
- */
-function getApiBaseUrl(): string {
-  if (process.env.EXPO_PUBLIC_API_URL) {
-    return process.env.EXPO_PUBLIC_API_URL;
-  }
-  if (Platform.OS === 'android') {
-    return "http://10.0.2.2:3000";
-  }
-  return "http://localhost:3000";
-}
-
-const API_BASE_URL = getApiBaseUrl();
+import { API_BASE_URL } from '../utils/api';
 
 export default function EditProfileScreen() {
   const { user } = useAuth();

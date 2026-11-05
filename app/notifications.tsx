@@ -14,7 +14,7 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
-import axios from "axios"; 
+import apiClient from "../utils/api"; 
 import { useAuth } from "../context/AuthContext";
 
 /* ================= TYPES ================= */
@@ -40,7 +40,7 @@ export default function NotificationsScreen() {
     }
 
     try {
-      const response = await axios.get(`http://10.0.2.2:3000/api/notifications?user_id=${user.id}`);
+      const response = await apiClient.get(`/api/notifications?user_id=${user.id}`);
       
       if (response.data.success) {
         setNotifications(response.data.data);
@@ -66,7 +66,7 @@ export default function NotificationsScreen() {
     setNotifications(prev => prev.filter(item => item.notification_id !== id));
 
     try {
-      await axios.delete(`http://10.0.2.2:3000/api/notifications/${id}?user_id=${user.id}`);
+      await apiClient.delete(`/api/notifications/${id}?user_id=${user.id}`);
     } catch (error) {
       console.error("Delete error:", error);
       fetchNotifications(); 
@@ -81,7 +81,7 @@ export default function NotificationsScreen() {
     setNotifications([]);
 
     try {
-      await axios.delete(`http://10.0.2.2:3000/api/notifications?user_id=${user.id}`);
+      await apiClient.delete(`/api/notifications?user_id=${user.id}`);
     } catch (error) {
       console.error("Clear all error:", error);
       fetchNotifications(); 
@@ -121,7 +121,7 @@ export default function NotificationsScreen() {
             {notifications.length === 0 ? (
                <View style={{flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: -50}}>
                   <Ionicons name="notifications-off-outline" size={64} color="#D1D5DB" />
-                  <Text style={{color: "#9CA3AF", marginTop: 10, fontFamily: "GoogleSans-Regular"}}>No notifications yet</Text>
+                  <Text style={{color: "#9CA3AF", marginTop: 10, fontFamily: "GoogleSansRegular"}}>No notifications yet</Text>
                </View>
             ) : (
               // LIST
@@ -196,7 +196,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 18,
-    fontFamily: "GoogleSans-Bold", 
+    fontFamily: "GoogleSansBold", 
     color: "#111827",
   },
   clearAllBottom: {
@@ -209,7 +209,7 @@ const styles = StyleSheet.create({
   clearAllText: {
     color: "#3B82F6",
     fontSize: 13,
-    fontFamily: "GoogleSans-Regular",
+    fontFamily: "GoogleSansRegular",
   },
   card: {
     backgroundColor: "#E6F0FF",
@@ -222,19 +222,19 @@ const styles = StyleSheet.create({
   },
   cardTitle: {
     fontSize: 14,
-    fontFamily: "GoogleSans-Bold",
+    fontFamily: "GoogleSansBold",
     color: "#111827",
   },
   cardMessage: {
     marginTop: 4,
     fontSize: 13,
-    fontFamily: "GoogleSans-Regular",
+    fontFamily: "GoogleSansRegular",
     color: "#374151",
   },
   cardDate: {
     fontSize: 11,
     marginTop: 6,
-    fontFamily: "GoogleSans-Regular",
+    fontFamily: "GoogleSansRegular",
     color: "#6B7280",
   },
 });

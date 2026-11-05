@@ -1,9 +1,5 @@
 import { create } from 'zustand';
-import axios from 'axios';
-import { Platform } from 'react-native';
-
-// CONFIG
-const API_URL = Platform.OS === 'android' ? 'http://10.0.2.2:3000' : 'http://localhost:3000';
+import apiClient from '../utils/api';
 
 // TYPES
 export type Goal = {
@@ -36,7 +32,7 @@ export const useGoalsStore = create<GoalsState>((set, get) => ({
     if (!userId) return;
     set({ loading: true });
     try {
-      const res = await axios.get(`${API_URL}/api/goals?user_id=${userId}`);
+      const res = await apiClient.get(`/api/goals?user_id=${userId}`);
       if (res.data.success) {
         set({ goals: res.data.data });
       }
@@ -50,7 +46,7 @@ export const useGoalsStore = create<GoalsState>((set, get) => ({
   // 2. ADD
   addGoal: async (userId, goalData) => {
     try {
-      await axios.post(`${API_URL}/api/goals`, {
+      await apiClient.post(`/api/goals`, {
         user_id: userId,
         name: goalData.name,
         amount: goalData.amount,
@@ -68,7 +64,7 @@ export const useGoalsStore = create<GoalsState>((set, get) => ({
   // 3. UPDATE
   updateGoal: async (userId, goalData) => {
     try {
-      await axios.put(`${API_URL}/api/goals/${goalData.id}`, {
+      await apiClient.put(`/api/goals/${goalData.id}`, {
         user_id: userId,
         name: goalData.name,
         amount: goalData.amount,
@@ -85,7 +81,7 @@ export const useGoalsStore = create<GoalsState>((set, get) => ({
   // 4. DELETE
   deleteGoal: async (userId, id) => {
     try {
-      await axios.delete(`${API_URL}/api/goals/${id}`, {
+      await apiClient.delete(`/api/goals/${id}`, {
         data: { user_id: userId }
       });
       await get().fetchGoals(userId);

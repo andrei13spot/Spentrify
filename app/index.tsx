@@ -14,8 +14,10 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import TransactionErrorModal from "../components/TransactionErrorModal";
+import AuthErrorModal from "../components/AuthErrorModal";
 import { useAuth } from "../context/AuthContext";
+import { THEME } from "../constants/theme";
+import { fonts } from "../constants/fonts";
 
 /* ================= SCREEN ================= */
 
@@ -246,8 +248,9 @@ export default function LoginScreen() {
       </KeyboardAvoidingView>
 
       {/* ERROR MODAL */}
-      <TransactionErrorModal
+      <AuthErrorModal
         visible={showError}
+        title="Login Failed"
         message={errorMessage}
         onRetry={() => setShowError(false)}
       />
@@ -260,35 +263,34 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: THEME.canvas,
   },
 
   scrollContent: {
     flexGrow: 1,
     justifyContent: "center",
-    paddingHorizontal: 20,
-    paddingBottom: 24,
+    paddingHorizontal: 24,
+    paddingBottom: 32,
   },
 
   card: {
     width: "100%",
   },
 
-  // --- FIXED LOGO SPACING ---
   logo: {
     width: "100%",      
-    height: 100,        // Reduced height to remove empty space
+    height: 90,
     alignSelf: "center",
     resizeMode: "contain",
-    marginBottom: 0,    // Removed margin to bring text closer
+    marginBottom: 4,
   },
 
   subtitle: {
     fontSize: 14,
     textAlign: "center",
-    color: "#6B7280",
-    marginBottom: 24,
-    marginTop: 0,      // Ensure no top margin pushes it down
+    color: THEME.sub,
+    fontFamily: fonts.body,
+    marginBottom: 28,
   },
 
   form: {
@@ -297,102 +299,113 @@ const styles = StyleSheet.create({
 
   input: {
     borderWidth: 1,
-    borderColor: "#E5E7EB",
-    borderRadius: 14,
-    padding: 14,
+    borderColor: THEME.border,
+    borderRadius: THEME.radius.lg,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     marginBottom: 14,
     fontSize: 15,
-    backgroundColor: "#FFFFFF",
+    fontFamily: fonts.body,
+    color: THEME.text,
+    backgroundColor: THEME.card,
   },
 
   passwordRow: {
     flexDirection: "row",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#E5E7EB",
-    borderRadius: 14,
-    paddingHorizontal: 14,
+    borderColor: THEME.border,
+    borderRadius: THEME.radius.lg,
+    paddingHorizontal: 16,
     marginBottom: 14,
+    backgroundColor: THEME.card,
   },
 
   passwordInput: {
     flex: 1,
     paddingVertical: 14,
     fontSize: 15,
+    fontFamily: fonts.body,
+    color: THEME.text,
   },
 
   showText: {
-    color: "#3B82F6",
-    fontWeight: "600",
-    fontSize: 14,
+    color: THEME.primary,
+    fontFamily: fonts.heading,
+    fontSize: 13,
   },
 
   loginButton: {
-    backgroundColor: "#3B82F6",
-    borderRadius: 14,
+    backgroundColor: THEME.primary,
+    borderRadius: THEME.radius.lg,
     paddingVertical: 16,
     alignItems: "center",
-    marginBottom: 14,
+    marginBottom: 16,
+    ...THEME.shadows.sm,
   },
 
   loginText: {
     color: "#FFFFFF",
     fontSize: 16,
-    fontWeight: "600",
+    fontFamily: fonts.heading,
   },
 
   signupLink: {
     textAlign: "center",
     fontSize: 13,
-    color: "#6B7280",
-    marginBottom: 18,
+    color: THEME.sub,
+    fontFamily: fonts.body,
+    marginBottom: 22,
   },
 
   signupBold: {
-    color: "#3B82F6",
-    fontWeight: "600",
+    color: THEME.primary,
+    fontFamily: fonts.heading,
   },
 
   dividerRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 18,
+    marginBottom: 20,
   },
 
   divider: {
     flex: 1,
     height: 1,
-    backgroundColor: "#E5E7EB",
+    backgroundColor: THEME.border,
   },
 
   dividerText: {
-    marginHorizontal: 10,
+    marginHorizontal: 12,
     fontSize: 12,
-    color: "#6B7280",
+    fontFamily: fonts.body,
+    color: THEME.muted,
   },
 
   socialButton: {
     flexDirection: "row",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#E5E7EB",
-    borderRadius: 14,
-    padding: 14,
+    borderColor: THEME.border,
+    borderRadius: THEME.radius.lg,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     marginBottom: 12,
     justifyContent: "center",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: THEME.card,
+    ...THEME.shadows.sm,
   },
 
   socialIcon: {
     width: 20,
     height: 20,
-    marginRight: 10,
+    marginRight: 12,
     resizeMode: "contain",
   },
 
   socialText: {
     fontSize: 14,
-    fontWeight: "500",
-    color: "#111827",
+    fontFamily: fonts.heading,
+    color: THEME.text,
   },
 });

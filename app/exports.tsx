@@ -14,6 +14,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import CSVExportPreviewModal, { CSVExportData } from "../components/CSVExportPreviewModal";
 import { useAuth } from "../context/AuthContext";
+import { API_BASE_URL } from "../utils/api";
 
 /* ================= THEME ================= */
 
@@ -26,21 +27,6 @@ const THEME = {
   border: "#E5E7EB",
   success: "#10B981",
 };
-
-/**
- * Get API base URL
- */
-function getApiBaseUrl(): string {
-  if (process.env.EXPO_PUBLIC_API_URL) {
-    return process.env.EXPO_PUBLIC_API_URL;
-  }
-  if (Platform.OS === 'android') {
-    return "http://10.0.2.2:3000";
-  }
-  return "http://localhost:3000";
-}
-
-const API_BASE_URL = getApiBaseUrl();
 
 /* ================= SCREEN ================= */
 
@@ -160,23 +146,35 @@ export default function ExportsScreen() {
       }
       
       // Parse CSV to get summary
-      const lines = csvContent.split('\n').filter(line => line.trim());
-      const dataLines = lines.slice(1); // Skip header
       let totalAmount = 0;
-      const transactionCount = dataLines.length;
+      let transactionCount = 0;
 
-      // Try to calculate total from CSV (assuming amount is in a column)
-      dataLines.forEach(line => {
-        const columns = line.split(',');
-        if (columns.length > 0) {
-          // Try to find amount column (usually one of the last columns)
-          const amountStr = columns[columns.length - 1]?.replace(/"/g, '').trim();
-          const amount = parseFloat(amountStr || '0');
-          if (!isNaN(amount)) {
-            totalAmount += amount;
+      const totalMatch = csvContent.match(/TOTAL REIMBURSABLE AMOUNT:\s*₱?([\d,.]+)/i);
+      const countMatch = csvContent.match(/NUMBER OF EXPENSES:\s*(\d+)/i);
+
+      if (totalMatch && totalMatch[1]) {
+        totalAmount = parseFloat(totalMatch[1].replace(/,/g, '')) || 0;
+      }
+      if (countMatch && countMatch[1]) {
+        transactionCount = parseInt(countMatch[1], 10) || 0;
+      }
+
+      // Fallback line parser if summary line wasn't present
+      if (!totalAmount) {
+        const lines = csvContent.split('\n').filter(line => line.trim());
+        lines.forEach(line => {
+          if (/^\d{4}-\d{2}-\d{2}/.test(line)) {
+            const columns = line.split(',');
+            if (columns.length >= 4) {
+              const parsed = parseFloat(columns[3]?.replace(/[^\d.]/g, '') || '0');
+              if (!isNaN(parsed)) {
+                totalAmount += parsed;
+                transactionCount++;
+              }
+            }
           }
-        }
-      });
+        });
+      }
 
       // Show preview modal instead of directly downloading
       const exportData: CSVExportData = {

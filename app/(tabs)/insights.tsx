@@ -1,99 +1,73 @@
+// app/(tabs)/insights.tsx
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
+  RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
-  ActivityIndicator,
-  ScrollView,
-  Platform,
-  RefreshControl,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import Svg, { Polyline, Circle } from "react-native-svg";
-import ScreenFadeIn from "../../components/ScreenFadeIn";
-import { useData } from "../../context/DataContext";
-import { useAuth } from "../../context/AuthContext";
-import { parseLocalDate } from "../../utils/date";
+import Svg, { Circle, Polyline } from "react-native-svg";
 
-function getApiBaseUrl(): string {
-  if (process.env.EXPO_PUBLIC_API_URL) {
-    return process.env.EXPO_PUBLIC_API_URL;
-  }
-  if (Platform.OS === "android") {
-    return "http://10.0.2.2:3000";
-  }
-  return "http://localhost:3000";
+import { useAuth } from "../../context/AuthContext";
+import { useData } from "../../context/DataContext";
+import { API_BASE_URL } from "../../utils/api";
+import { parseLocalDate } from "../../utils/date";
+import { THEME, getCategoryColor } from "../../constants/theme";
+import { fonts } from "../../constants/fonts";
+
+type FilterTab = "All" | "Alerts" | "Trends" | "Habits";
+
+interface BackendInsight {
+  id: string | number;
+  insight_id?: number;
+  title?: string;
+  message: string;
+  insight_type?: string;
+  created_at?: string;
 }
 
-const API_BASE_URL = getApiBaseUrl();
-
-/* ================= TYPES ================= */
-
-type InsightItem = {
-  id: string;
-  title: string;
-  description: string;
-  type: "card" | "alert-success" | "alert-warning";
-  data?: any; // For chart data, etc.
-};
-
-/* ================= SCREEN ================= */
-
 export default function InsightsScreen() {
-  // Note: budgets = goals (they're the same thing in this app)
-  // In DataContext: 'transactions' = budgets/goals, 'allTransactions' = actual spending transactions
-  const { allTransactions, transactions: budgets } = useData();
+  const { allTransactions } = useData();
   const { user } = useAuth();
-  const [backendInsights, setBackendInsights] = useState<any[]>([]);
+
+  const [backendInsights, setBackendInsights] = useState<BackendInsight[]>([]);
   const [weeklyTrend, setWeeklyTrend] = useState<any>(null);
-  const [historicalAverages, setHistoricalAverages] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [activeTab, setActiveTab] = useState<FilterTab>("All");
 
-  // Fetch insights and analytics from backend
   const fetchInsights = async () => {
     if (!user?.id) return;
-    
+
     try {
       setLoading(true);
 
-      // Generate combined insights (Gemini + rules/ML)
-      await fetch(`${API_BASE_URL}/api/insights/generate?user_id=${user.id}&mode=hybrid`, {
-        method: 'POST'
-      });
+      // Trigger hybrid AI generation (rules + Gemini)
+      fetch(`${API_BASE_URL}/api/insights/generate?user_id=${user.id}&mode=hybrid`, {
+        method: "POST",
+      }).catch(() => {});
 
-      // Fetch AI insights
-      const insightsRes = await fetch(
-        `${API_BASE_URL}/api/insights?user_id=${user.id}&limit=10`
-      );
+      // Fetch AI Insights list
+      const insightsRes = await fetch(`${API_BASE_URL}/api/insights?user_id=${user.id}&limit=10`);
       const insightsData = await insightsRes.json();
-      if (insightsData.success) {
-        setBackendInsights(insightsData.data || []);
+      if (insightsData.success && Array.isArray(insightsData.data)) {
+        setBackendInsights(insightsData.data);
       }
-      
-      // Fetch weekly trend
-      const trendRes = await fetch(
-        `${API_BASE_URL}/api/analytics/weekly-trend?user_id=${user.id}`
-      );
+
+      // Fetch Weekly Trend
+      const trendRes = await fetch(`${API_BASE_URL}/api/analytics/weekly-trend?user_id=${user.id}`);
       const trendData = await trendRes.json();
       if (trendData.success) {
         setWeeklyTrend(trendData.data || null);
       }
-      
-      // Fetch historical averages for baseline comparison
-      const averagesRes = await fetch(
-        `${API_BASE_URL}/api/analytics/historical-averages?user_id=${user.id}`
-      );
-      const averagesData = await averagesRes.json();
-      if (averagesData.success) {
-        setHistoricalAverages(averagesData.data || null);
-      }
-      
-    } catch (error) {
-      console.error('Failed to fetch insights:', error);
+    } catch (err) {
+      console.warn("Failed to fetch insights:", err);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -109,542 +83,438 @@ export default function InsightsScreen() {
     fetchInsights();
   };
 
-  /* ================= DERIVED INSIGHTS FROM BACKEND DATA ================= */
-
-  const insights = useMemo<InsightItem[]>(() => {
-    const result: InsightItem[] = [];
-
-    // Use actual transactions from backend (allTransactions)
-    // If no transactions, return a helpful card
-    if (!allTransactions || allTransactions.length === 0) {
-      result.push({
-        id: "no-data",
-        title: "No insights yet",
-        description: "Add transactions to generate personalized insights.",
-        type: "card",
-      });
-      return result;
+  // Sparkline points for Weekly Trend
+  const sparklineData = useMemo(() => {
+    if (!weeklyTrend?.currentWeek || weeklyTrend.currentWeek.length === 0) {
+      return null;
     }
+    const days: any[] = weeklyTrend.currentWeek;
+    const maxVal = Math.max(...days.map((d) => d.amount || 0), 1);
+    const width = 240;
+    const height = 54;
 
-    const now = new Date();
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(now.getDate() - 7);
+    const points = days
+      .map((d, i) => {
+        const x = (i / Math.max(1, days.length - 1)) * width;
+        const y = height - ((d.amount || 0) / maxVal) * (height - 10) - 5;
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      })
+      .join(" ");
 
-    // Filter transactions from last 7 days
-    const recentTx = allTransactions.filter((tx: any) => {
-      const txDate = parseLocalDate(tx.transaction_date || tx.created_at);
-      return txDate >= sevenDaysAgo;
-    });
+    return { points, days, maxVal, width, height };
+  }, [weeklyTrend]);
 
-    // Calculate total spending in last 7 days
-    const totalRecentSpend = recentTx.reduce(
-      (sum: number, tx: any) => sum + (tx.amount || 0),
-      0
-    );
-
-    /* WEEKLY TREND */
-    // Use backend weekly trend data if available
-    if (weeklyTrend && weeklyTrend.currentWeek && weeklyTrend.currentWeek.length > 0) {
-      const percentageChange = weeklyTrend.percentageChange || 0;
-      const hasPreviousWeek = weeklyTrend.previousWeekTotal > 0;
-      
-      let description = '';
-      if (hasPreviousWeek) {
-        if (percentageChange > 0) {
-          description = `You spent **${Math.round(percentageChange)}% more** than last week.`;
-        } else if (percentageChange < 0) {
-          description = `You spent **${Math.abs(Math.round(percentageChange))}% less** than last week.`;
-        } else {
-          description = `Your spending is the same as last week.`;
-        }
-      } else {
-        description = `You spent ₱${weeklyTrend.currentWeekTotal.toLocaleString()} this week.`;
-      }
-      
-      result.push({
-        id: "weekly-trend",
-        title: "Weekly Spending Trend",
-        description: description,
-        type: "card",
-        data: weeklyTrend.currentWeek,
-      });
-    } else if (recentTx.length >= 2) {
-      result.push({
-        id: "weekly-trend",
-        title: "Weekly Spending Trend",
-        description: `You made ${recentTx.length} transactions in the last 7 days, spending ₱${totalRecentSpend.toLocaleString()}.`,
-        type: "card",
-      });
-    }
-
-    /* RECENT SUMMARY */
-    if (recentTx.length > 0) {
-      const largestRecent = recentTx.reduce((max: any, tx: any) =>
-        (tx.amount || 0) > (max.amount || 0) ? tx : max
+  // Filter insights by tab
+  const filteredInsights = useMemo(() => {
+    if (activeTab === "All") return backendInsights;
+    if (activeTab === "Alerts") {
+      return backendInsights.filter(
+        (i) => (i.insight_type || "").includes("Alert") || (i.insight_type || "").includes("Overspending")
       );
-      result.push({
-        id: "recent-summary",
-        title: "Recent Activity",
-        description: `Last 7 days: ${recentTx.length} transactions totaling ₱${totalRecentSpend.toLocaleString()}. Largest: ₱${Math.round(
-          largestRecent.amount || 0
-        ).toLocaleString()} at ${largestRecent.merchant_name || "a merchant"}.`,
-        type: "card",
-      });
     }
-
-    /* TOP CATEGORY */
-    if (allTransactions.length > 0) {
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(now.getDate() - 30);
-      const last30Tx = allTransactions.filter((tx: any) => {
-        const txDate = parseLocalDate(tx.transaction_date || tx.created_at);
-        return txDate >= thirtyDaysAgo;
-      });
-      const categoryTotals = new Map<string, number>();
-      last30Tx.forEach((tx: any) => {
-        const name = tx.category || "Others";
-        categoryTotals.set(name, (categoryTotals.get(name) || 0) + (tx.amount || 0));
-      });
-      let topCategory: { name: string; total: number } | null = null;
-      for (const [name, total] of categoryTotals.entries()) {
-        if (!topCategory || total > topCategory.total) {
-          topCategory = { name, total };
-        }
-      }
-      if (topCategory) {
-        result.push({
-          id: "top-category",
-          title: "Top Category (30 days)",
-          description: `Your top category is ${topCategory.name} with ₱${Math.round(
-            topCategory.total
-          ).toLocaleString()} in the last 30 days.`,
-          type: "card",
-        });
-      }
+    if (activeTab === "Trends") {
+      return backendInsights.filter(
+        (i) => (i.insight_type || "").includes("Trend") || (i.insight_type || "").includes("Week")
+      );
     }
-
-    /* UNDER BUDGET / SPENDING PACE */
-    // Check if spending is under budget OR below historical average
-    let isUnderBudget = false;
-    let budgetAmount = 0;
-    let comparisonText = '';
-    
-    if (budgets.length > 0) {
-      // Check if spending is under any budget
-      const overallBudget = budgets.find((b) => !b.category || b.name === "Overall Budget");
-      if (overallBudget && overallBudget.amount > 0) {
-        // Calculate weekly budget (assuming monthly budget)
-        const weeklyBudget = overallBudget.amount / 4;
-        budgetAmount = weeklyBudget;
-        if (totalRecentSpend < weeklyBudget) {
-          isUnderBudget = true;
-          const underAmount = Math.round(weeklyBudget - totalRecentSpend);
-          comparisonText = `Great job! You're PHP ${underAmount.toLocaleString()} under your monthly budget.`;
-        }
-      }
-    } else if (historicalAverages && historicalAverages.hasEnoughData) {
-      // No budget set - compare to historical average
-      const weeklyAverage = historicalAverages.weeklyAverage || 0;
-      if (weeklyAverage > 0) {
-        const diff = weeklyAverage - totalRecentSpend;
-        const diffPercent = ((diff / weeklyAverage) * 100);
-        
-        if (diff > 0 && diffPercent > 10) {
-          // Spending is significantly below historical average
-          isUnderBudget = true;
-          comparisonText = `Great job! You're spending PHP ${Math.round(diff).toLocaleString()} less than your weekly average (${Math.round(diffPercent)}% below).`;
-        } else if (diff < 0 && Math.abs(diffPercent) > 10) {
-          // Spending is above historical average - show as alert
-          result.push({
-            id: "spending-pace",
-            title: "Spending Alert",
-            description: `You're spending PHP ${Math.round(Math.abs(diff)).toLocaleString()} more than your weekly average (${Math.round(Math.abs(diffPercent))}% above).`,
-            type: "alert-warning",
-          });
-        }
-      }
-    } else if (totalRecentSpend < 5000 && recentTx.length > 0 && !historicalAverages?.hasEnoughData) {
-      // Fallback: if no budget and not enough historical data, use reasonable threshold
-      isUnderBudget = true;
-      comparisonText = `You spent ₱${totalRecentSpend.toLocaleString()} this week. Add more transactions to get personalized insights!`;
-    }
-
-    if (isUnderBudget && recentTx.length > 0 && comparisonText) {
-      result.push({
-        id: "under-budget",
-        title: "Under Budget",
-        description: comparisonText,
-        type: "alert-success",
-      });
-    }
-
-    /* SUBSCRIPTION ALERT */
-    // Check for subscription-related transactions
-    const subscriptionTransactions = allTransactions.filter((tx: any) => {
-      // Check if merchant name contains subscription keywords
-      const merchantName = (tx.merchant_name || '').toLowerCase();
-      const subscriptionKeywords = ['netflix', 'spotify', 'youtube', 'premium', 'subscription', 'monthly'];
-      return subscriptionKeywords.some(keyword => merchantName.includes(keyword));
-    });
-
-    if (subscriptionTransactions.length > 0) {
-      // Group by merchant to detect price changes
-      const merchantMap = new Map();
-      subscriptionTransactions.forEach((tx: any) => {
-        const merchant = tx.merchant_name || 'Unknown';
-        if (!merchantMap.has(merchant)) {
-          merchantMap.set(merchant, []);
-        }
-        merchantMap.get(merchant).push(tx);
-      });
-
-      // Check for price changes (compare most recent with previous)
-      merchantMap.forEach((txs, merchant) => {
-        if (txs.length >= 2) {
-          // Sort by date
-          txs.sort((a: any, b: any) => {
-            const dateA = parseLocalDate(a.transaction_date || a.created_at);
-            const dateB = parseLocalDate(b.transaction_date || b.created_at);
-            return dateB.getTime() - dateA.getTime();
-          });
-          
-          const latest = txs[0];
-          const previous = txs[1];
-          const priceDiff = latest.amount - previous.amount;
-          
-          if (Math.abs(priceDiff) > 10) { // Significant change (>₱10)
-            result.push({
-              id: `subscription-alert-${merchant}`,
-              title: "Subscription Alert",
-              description: `${merchant} price ${priceDiff > 0 ? 'increased' : 'decreased'} by PHP ${Math.abs(priceDiff).toLocaleString()} this month.`,
-              type: "alert-warning",
-            });
-          }
-        }
-      });
-      
-      // If no price changes detected, show general subscription alert
-      if (result.filter(r => r.id.startsWith('subscription-alert-')).length === 0) {
-        const subscriptionTotal = subscriptionTransactions.reduce(
-          (sum: number, tx: any) => sum + (tx.amount || 0),
-          0
-        );
-        result.push({
-          id: "subscription-alert",
-          title: "Subscription Alert",
-          description: `You have ${subscriptionTransactions.length} subscription-related expense${subscriptionTransactions.length > 1 ? 's' : ''} totaling ₱${subscriptionTotal.toLocaleString()}.`,
-          type: "alert-warning",
-        });
-      }
-    }
-
-    /* OVERSPENDING ALERT */
-    // Check if any budget is exceeded
-    budgets.forEach((budget) => {
-      if (budget.spent && budget.amount && budget.spent > budget.amount) {
-        const overAmount = budget.spent - budget.amount;
-        result.push({
-          id: `overspending-${budget.id}`,
-          title: `Over Budget: ${budget.name}`,
-          description: `You've exceeded your ${budget.name} budget by ₱${overAmount.toLocaleString()}.`,
-          type: "alert-warning",
-        });
-      }
-    });
-
-    // Add backend AI insights
-    backendInsights.forEach((insight) => {
-      const isSuccess = insight.type === 'Projection' || insight.type === 'Habit';
-      result.push({
-        id: `backend-${insight.id}`,
-        title: insight.type === 'Overspending' ? 'Over Budget' : 
-               insight.type === 'Subscription' ? 'Subscription Alert' :
-               insight.type === 'Category Alert' ? 'Spending Alert' :
-               insight.type === 'Projection' ? 'Under Budget' :
-               insight.type === 'Habit' ? 'Spending Pattern' : insight.type,
-        description: insight.message,
-        type: isSuccess ? "alert-success" : "alert-warning",
-      });
-    });
-    
-    return result;
-  }, [allTransactions, budgets, backendInsights, weeklyTrend, historicalAverages]);
+    return backendInsights.filter(
+      (i) => !(i.insight_type || "").includes("Alert") && !(i.insight_type || "").includes("Trend")
+    );
+  }, [backendInsights, activeTab]);
 
   return (
     <SafeAreaView style={styles.safeArea} edges={["top"]}>
+      {/* Screen Header */}
+      <View style={styles.topBar}>
+        <View>
+          <Text style={styles.headerTitle}>Financial Insights</Text>
+          <Text style={styles.headerSub}>Auto-Audit & Spending Habits</Text>
+        </View>
+        <TouchableOpacity
+          activeOpacity={0.7}
+          style={styles.refreshBtn}
+          onPress={onRefresh}
+        >
+          <Ionicons name="refresh" size={18} color={THEME.primary} />
+        </TouchableOpacity>
+      </View>
+
       <ScrollView
-        style={styles.container}
+        showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={THEME.primary}
+            colors={[THEME.primary]}
+          />
         }
       >
-        {/* HEADER */}
-        <View style={styles.header}>
-          <Text style={styles.title}>Insights</Text>
-          <Text style={styles.subtitle}>Analyze your spending habits</Text>
-        </View>
-        {loading && insights.length === 0 ? (
-          <View style={styles.emptyState}>
-            <ActivityIndicator size="large" color="#3B82F6" />
-            <Text style={[styles.emptyText, { marginTop: 16 }]}>
-              Loading insights...
-            </Text>
-          </View>
-        ) : (
-          <ScreenFadeIn>
-          {insights.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyText}>
-                No insights yet. Add more transactions to unlock insights.
-              </Text>
+        {/* Weekly Trend Hero Card */}
+        <View style={styles.trendCard}>
+          <View style={styles.trendHeader}>
+            <View style={styles.trendBadge}>
+              <Ionicons name="trending-up" size={14} color="#93C5FD" />
+              <Text style={styles.trendBadgeText}>7-Day Velocity</Text>
             </View>
-          ) : (
-            insights.map((insight) => {
-              // Weekly trend card
-              if (insight.id === "weekly-trend") {
-                const trendData = insight.data || [];
-                const points = trendData.length > 0 
-                  ? trendData.map((day: any, i: number) => {
-                      const max = Math.max(...trendData.map((d: any) => d.amount), 1);
-                      const x = (i / Math.max(1, trendData.length - 1)) * 200;
-                      const y = 50 - ((day.amount / max) * 50);
-                      return `${x},${y}`;
-                    }).join(' ')
-                  : '';
-                
-                // Parse description to highlight percentage
-                const descriptionParts = insight.description.split('**');
-                const hasHighlight = descriptionParts.length > 1;
-                
-                return (
-                  <TouchableOpacity
-                    key={insight.id}
-                    activeOpacity={0.85}
-                    onPress={() =>
-                      router.push({
-                        pathname: "/insight/[id]",
-                        params: { id: "weekly-trend" },
-                      })
-                    }
-                    style={styles.card}
-                  >
-                    <Text style={styles.cardTitle}>{insight.title}</Text>
-                    {hasHighlight ? (
-                      <Text style={styles.cardSubtitle}>
-                        {descriptionParts[0]}
-                        <Text style={styles.highlightText}>{descriptionParts[1]}</Text>
-                        {descriptionParts[2]}
-                      </Text>
-                    ) : (
-                      <Text style={styles.cardSubtitle}>
-                        {insight.description}
-                      </Text>
-                    )}
-                    <View style={styles.chartContainer}>
-                      {points ? (
-                        <Svg width={200} height={50}>
-                          <Polyline
-                            points={points}
-                            fill="none"
-                            stroke="#3B82F6"
-                            strokeWidth={3}
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                          {/* Add dots for each data point */}
-                          {trendData.map((day: any, i: number) => {
-                            const max = Math.max(...trendData.map((d: any) => d.amount), 1);
-                            const x = (i / Math.max(1, trendData.length - 1)) * 200;
-                            const y = 50 - ((day.amount / max) * 50);
-                            return (
-                              <Circle
-                                key={i}
-                                cx={x}
-                                cy={y}
-                                r={3}
-                                fill="#3B82F6"
-                              />
-                            );
-                          })}
-                        </Svg>
-                      ) : (
-                        <View style={styles.fakeLine} />
-                      )}
-                    </View>
-                  </TouchableOpacity>
-                );
-              }
+            {weeklyTrend?.percentageChange !== undefined && (
+              <View
+                style={[
+                  styles.changePill,
+                  {
+                    backgroundColor:
+                      weeklyTrend.percentageChange > 0
+                        ? "rgba(239, 68, 68, 0.2)"
+                        : "rgba(16, 185, 129, 0.2)",
+                  },
+                ]}
+              >
+                <Ionicons
+                  name={weeklyTrend.percentageChange > 0 ? "arrow-up" : "arrow-down"}
+                  size={12}
+                  color={weeklyTrend.percentageChange > 0 ? "#FCA5A5" : "#6EE7B7"}
+                />
+                <Text
+                  style={[
+                    styles.changeText,
+                    {
+                      color:
+                        weeklyTrend.percentageChange > 0 ? "#FCA5A5" : "#6EE7B7",
+                    },
+                  ]}
+                >
+                  {Math.abs(Math.round(weeklyTrend.percentageChange))}% vs last week
+                </Text>
+              </View>
+            )}
+          </View>
 
-              // Alert cards (under budget, subscription, overspending)
-              const isSuccess = insight.type === "alert-success";
+          <Text style={styles.trendTotalLabel}>This Week's Spending</Text>
+          <Text style={styles.trendTotalValue}>
+            ₱{(weeklyTrend?.currentWeekTotal || 0).toLocaleString("en-US", {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })}
+          </Text>
+
+          {/* Sparkline Curve */}
+          {sparklineData && (
+            <View style={styles.sparklineWrap}>
+              <Svg width={sparklineData.width} height={sparklineData.height}>
+                <Polyline
+                  points={sparklineData.points}
+                  fill="none"
+                  stroke="#38BDF8"
+                  strokeWidth={3}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </Svg>
+            </View>
+          )}
+        </View>
+
+        {/* Filter Pills */}
+        <View style={styles.filterRow}>
+          {(["All", "Alerts", "Trends", "Habits"] as FilterTab[]).map((tab) => {
+            const isActive = activeTab === tab;
+            return (
+              <TouchableOpacity
+                key={tab}
+                activeOpacity={0.7}
+                style={[styles.filterChip, isActive && styles.filterChipActive]}
+                onPress={() => setActiveTab(tab)}
+              >
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    isActive && styles.filterChipTextActive,
+                  ]}
+                >
+                  {tab}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {/* Loading Indicator */}
+        {loading && !refreshing && (
+          <View style={{ paddingVertical: 24, alignItems: "center" }}>
+            <ActivityIndicator size="small" color={THEME.primary} />
+          </View>
+        )}
+
+        {/* Insights Feed */}
+        {filteredInsights.length > 0 ? (
+          <View style={styles.insightsList}>
+            {filteredInsights.map((item, idx) => {
+              const isAlert =
+                (item.insight_type || "").includes("Alert") ||
+                (item.insight_type || "").includes("Overspending");
+              const isTrend =
+                (item.insight_type || "").includes("Trend") ||
+                (item.insight_type || "").includes("Week");
+
+              const iconName = isAlert
+                ? "alert-circle"
+                : isTrend
+                ? "analytics"
+                : "bulb";
+
+              const iconColor = isAlert
+                ? THEME.warning
+                : isTrend
+                ? THEME.accent
+                : THEME.primary;
+
+              const bgTint = isAlert
+                ? THEME.warningLight
+                : isTrend
+                ? "#ECFEFF"
+                : THEME.primaryLight;
 
               return (
                 <TouchableOpacity
-                  key={insight.id}
-                  activeOpacity={0.85}
-                  onPress={() =>
+                  key={item.id?.toString() || idx.toString()}
+                  activeOpacity={0.8}
+                  style={styles.insightCard}
+                  onPress={() => {
+                    const idParam = item.insight_id || item.id || idx;
                     router.push({
                       pathname: "/insight/[id]",
-                      params: { id: insight.id },
-                    })
-                  }
-                  style={styles.alertCard}
+                      params: { id: String(idParam) },
+                    });
+                  }}
                 >
-                  <View
-                    style={[
-                      styles.iconWrapper,
-                      isSuccess ? styles.successBg : styles.warningBg,
-                    ]}
-                  >
-                    <Ionicons
-                      name={isSuccess ? "arrow-down" : "alert-circle"}
-                      size={18}
-                      color={isSuccess ? "#16A34A" : "#F97316"}
-                    />
+                  <View style={[styles.cardIconWrap, { backgroundColor: bgTint }]}>
+                    <Ionicons name={iconName} size={20} color={iconColor} />
                   </View>
 
-                  <View style={styles.alertText}>
-                    <Text style={styles.alertTitle}>{insight.title}</Text>
-                    <Text style={styles.alertDescription}>
-                      {insight.description}
-                    </Text>
+                  <View style={styles.cardContent}>
+                    <View style={styles.cardHeaderRow}>
+                      <Text style={styles.cardTitle}>
+                        {item.title || item.insight_type || "Auto-Audit Alert"}
+                      </Text>
+                      <Ionicons name="chevron-forward" size={14} color="#94A3B8" />
+                    </View>
+                    <Text style={styles.cardMessage}>{item.message}</Text>
                   </View>
                 </TouchableOpacity>
               );
-            })
-          )}
-          </ScreenFadeIn>
+            })}
+          </View>
+        ) : (
+          !loading && (
+            <View style={styles.emptyContainer}>
+              <View style={styles.emptyIconBg}>
+                <Ionicons name="sparkles-outline" size={30} color={THEME.muted} />
+              </View>
+              <Text style={styles.emptyTitle}>All Clear</Text>
+              <Text style={styles.emptySubText}>
+                No spending alerts for this filter. Log more transactions to reveal deeper spending patterns.
+              </Text>
+            </View>
+          )
         )}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-/* ================= STYLES ================= */
-
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#F9FAFB",
+    backgroundColor: THEME.canvas,
   },
-
-  container: {
-    flex: 1,
+  topBar: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    backgroundColor: THEME.canvas,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontFamily: fonts.heading,
+    color: THEME.text,
+  },
+  headerSub: {
+    fontSize: 12,
+    fontFamily: fonts.body,
+    color: THEME.sub,
+    marginTop: 2,
+  },
+  refreshBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: THEME.card,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: THEME.borderLight,
+    ...THEME.shadows.sm,
   },
   scrollContent: {
-    paddingHorizontal: 20,
-    paddingBottom: 100,
+    paddingBottom: 110,
   },
-
-  header: {
+  trendCard: {
+    backgroundColor: "#0F172A",
+    borderRadius: THEME.radius.xl,
+    padding: 22,
+    marginHorizontal: 18,
+    marginTop: 6,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: "#1E293B",
+    ...THEME.shadows.float,
+  },
+  trendHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 14,
+  },
+  trendBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(30, 58, 138, 0.4)",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: THEME.radius.pill,
+    borderWidth: 1,
+    borderColor: "rgba(59, 130, 246, 0.25)",
+  },
+  trendBadgeText: {
+    color: "#93C5FD",
+    fontSize: 12,
+    fontFamily: fonts.body,
+  },
+  changePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: THEME.radius.pill,
+  },
+  changeText: {
+    fontSize: 11,
+    fontFamily: fonts.heading,
+  },
+  trendTotalLabel: {
+    fontSize: 12,
+    color: "#94A3B8",
+    fontFamily: fonts.body,
+    marginBottom: 4,
+  },
+  trendTotalValue: {
+    fontSize: 28,
+    color: "#FFFFFF",
+    fontFamily: fonts.heading,
+    letterSpacing: -0.5,
+  },
+  sparklineWrap: {
+    marginTop: 16,
+    alignItems: "center",
+  },
+  filterRow: {
+    flexDirection: "row",
+    paddingHorizontal: 18,
+    gap: 8,
     marginBottom: 16,
   },
-  title: {
-    fontSize: 20,
-    fontWeight: "600",
-    color: "#111827",
+  filterChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: THEME.radius.pill,
+    backgroundColor: THEME.card,
+    borderWidth: 1,
+    borderColor: THEME.borderLight,
   },
-  subtitle: {
-    fontSize: 13,
-    color: "#6B7280",
-    marginTop: 4,
+  filterChipActive: {
+    backgroundColor: THEME.primary,
+    borderColor: THEME.primary,
   },
-  card: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
+  filterChipText: {
+    fontSize: 12,
+    fontFamily: fonts.body,
+    color: THEME.sub,
+  },
+  filterChipTextActive: {
+    color: "#FFFFFF",
+    fontFamily: fonts.heading,
+  },
+  insightsList: {
+    paddingHorizontal: 18,
+    gap: 12,
+  },
+  insightCard: {
+    flexDirection: "row",
+    backgroundColor: THEME.card,
+    borderRadius: THEME.radius.lg,
     padding: 16,
-    marginBottom: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
+    borderWidth: 1,
+    borderColor: THEME.borderLight,
+    gap: 14,
+    ...THEME.shadows.sm,
+  },
+  cardIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  cardContent: {
+    flex: 1,
+  },
+  cardHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 4,
   },
   cardTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#111827",
-    marginBottom: 8,
-  },
-  cardSubtitle: {
     fontSize: 14,
-    color: "#6B7280",
-    lineHeight: 20,
-    marginBottom: 12,
+    fontFamily: fonts.heading,
+    color: THEME.text,
   },
-  highlightText: {
-    color: "#3B82F6",
-    fontWeight: "600",
+  cardMessage: {
+    fontSize: 13,
+    fontFamily: fonts.body,
+    color: THEME.sub,
+    lineHeight: 18,
   },
-
-  chartContainer: {
-    marginTop: 8,
-    height: 80,
-    borderRadius: 12,
+  emptyContainer: {
+    alignItems: "center",
+    paddingVertical: 40,
+    paddingHorizontal: 24,
+  },
+  emptyIconBg: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     backgroundColor: "#F1F5F9",
     justifyContent: "center",
     alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  fakeLine: {
-    height: 2,
-    backgroundColor: "#3B82F6",
-    borderRadius: 2,
-  },
-
-  alertCard: {
-    flexDirection: "row",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 16,
-    alignItems: "center",
     marginBottom: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
   },
-  iconWrapper: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 12,
-  },
-  successBg: {
-    backgroundColor: "#DCFCE7",
-  },
-  warningBg: {
-    backgroundColor: "#FFEDD5",
-  },
-  alertText: {
-    flex: 1,
-  },
-  alertTitle: {
+  emptyTitle: {
     fontSize: 15,
-    fontWeight: "600",
-    color: "#111827",
-    marginBottom: 4,
+    fontFamily: fonts.heading,
+    color: THEME.text,
+    marginBottom: 6,
   },
-  alertDescription: {
+  emptySubText: {
     fontSize: 13,
-    color: "#6B7280",
-    lineHeight: 18,
-  },
-
-  emptyState: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingVertical: 40,
-  },
-  emptyText: {
-    color: "#6B7280",
-    fontSize: 14,
+    fontFamily: fonts.body,
+    color: THEME.sub,
     textAlign: "center",
+    lineHeight: 18,
   },
 });

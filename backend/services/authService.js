@@ -310,6 +310,20 @@ async function updatePassword(userId, currentPassword, newPassword) {
   return true;
 }
 
+/**
+ * Permanently delete a user account and cascade delete all related data
+ * @param {number} userId - User ID
+ */
+async function deleteAccount(userId) {
+  if (!userId) {
+    throw new Error('User ID is required');
+  }
+
+  // Delete user record (foreign key ON DELETE CASCADE clears related tables)
+  const result = await db.run('DELETE FROM Users WHERE user_id = ?', [userId]);
+  return result.changes > 0;
+}
+
 module.exports = {
   hashPassword,
   comparePassword,
@@ -319,5 +333,6 @@ module.exports = {
   getUserById,
   updateUserPreferences,
   updateUserProfile,
-  updatePassword
+  updatePassword,
+  deleteAccount
 };

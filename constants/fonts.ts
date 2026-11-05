@@ -1,4 +1,5 @@
+// constants/fonts.ts
 export const fonts = {
-  heading: "Google_Sans-Bold",
-  body: "Google_Sans-Regular",
+  heading: "GoogleSansBold",
+  body: "GoogleSansRegular",
 };

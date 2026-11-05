@@ -26,4 +26,7 @@ router.put('/profile', authController.updateProfile);
 // PUT /api/auth/password - Update user password
 router.put('/password', authController.updatePassword);
 
+// DELETE /api/auth/account - Delete user account
+router.delete('/account', authController.deleteAccount);
+
 module.exports = router;

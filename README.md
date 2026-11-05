@@ -4,7 +4,7 @@ Smart spending and transaction auditing app with insights, goals, and exports.
 ## Overview
 Spentrify is a mobile-first spending tracker built with Expo Router and a lightweight
 Express + SQLite backend. It supports manual expense logging, SMS-based transaction
-detection on Android, budget and savings goal tracking, analytics dashboards, and
+detection on Android, goal tracking, analytics dashboards, and
 insight summaries. The current branch includes the notifications page with delete
 and clear-all flows backed by the API.
 
@@ -12,7 +12,7 @@ and clear-all flows backed by the API.
 - Authentication: email signup/login, session persistence, and profile editing
 - Transactions: add, edit, delete, and view recent activity with category filters
 - SMS detection (Android): listens to bank SMS and opens a categorization pop-up
-- Budgets and goals: create, edit, and track savings progress with adjustments
+- Goals: create, edit, and track progress towards financial milestones
 - Insights: weekly trends, top categories, overspending alerts, and Gemini summaries
 - Analytics: category breakdowns and historical averages for spending patterns
 - Notifications: inbox list, single delete, and clear-all actions (API-backed)

@@ -11,20 +11,7 @@ import { Platform } from "react-native";
 import axios from "axios";
 import { useAuth } from "./AuthContext";
 import { formatLocalDateKey, parseLocalDate } from "../utils/date";
-
-/* ================= CONFIG ================= */
-
-function getApiBaseUrl(): string {
-  if (process.env.EXPO_PUBLIC_API_URL) {
-    return process.env.EXPO_PUBLIC_API_URL;
-  }
-  if (Platform.OS === "android") {
-    return "http://10.0.2.2:3000";
-  }
-  return "http://localhost:3000";
-}
-
-const API_BASE_URL = getApiBaseUrl();
+import { API_BASE_URL } from "../utils/api";
 
 /* ================= TYPES ================= */
 
@@ -34,18 +21,18 @@ export type Expense = {
   createdAt: string;
 };
 
-// NOTE: Based on your code, "Transaction" type here actually looks like a "Budget/Goal".
-// "allTransactions" holds the actual expense records.
 export type Transaction = {
   id: string;
-  name: string;
-  category: string;
   amount: number;
-  date: string;
-  createdAt: string;
-  expenses?: Expense[];
-  spent?: number;
-  trend?: number[];
+  merchant_name?: string;
+  description?: string;
+  category?: string;
+  category_id?: number;
+  transaction_date?: string;
+  created_at?: string;
+  source_type?: string;
+  is_manual?: number;
+  is_reimbursable?: number;
 };
 
 export type GeneratedReport = {
@@ -57,12 +44,11 @@ export type GeneratedReport = {
 };
 
 type DataContextType = {
-  transactions: Transaction[]; // This seems to be your Budgets/Goals list
-  allTransactions: any[];      // This is your Actual Expenses list
+  transactions: any[];
+  allTransactions: any[];
   categories: Array<{ category_id: number; category_name: string }>;
   loading: boolean;
 
-  // Updated signatures to match Backend Logic
   addTransaction: (data: any) => Promise<void>;
   updateTransaction: (id: string, updates: any) => Promise<void>;
   deleteTransaction: (id: string) => Promise<void>;
@@ -118,14 +104,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     try {
       setLoading(true);
 
-      // Using Axios for cleaner syntax
-      const [budgetsRes, txRes, categoriesRes] = await Promise.all([
-        axios.get(`${API_BASE_URL}/api/budgets?user_id=${user.id}`),
+      // Fetch transactions and categories in parallel
+      const [txRes, categoriesRes] = await Promise.all([
         axios.get(`${API_BASE_URL}/api/transactions?user_id=${user.id}`),
         axios.get(`${API_BASE_URL}/api/categories`),
       ]);
 
-      const budgets = budgetsRes.data.data || [];
       const categories = categoriesRes.data.data || [];
 
       // Create a Map for categories
@@ -139,67 +123,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           tx.category ||
           (tx.category_id ? categoryMap.get(tx.category_id) : null) ||
           "Others",
-      })); // The actual expenses
+      }));
 
-      // --- LOGIC TO MAP BUDGETS & CALCULATE TRENDS ---
-      const transformed: Transaction[] = budgets.map((budget: any) => {
-        const relatedTx = userTransactions.filter((tx: any) =>
-          budget.category_id
-            ? tx.category_id === budget.category_id
-            : true
-        );
-
-        const spent = relatedTx.reduce(
-          (sum: number, tx: any) => sum + (tx.amount || 0),
-          0
-        );
-
-        const now = new Date();
-        const sevenDaysAgo = new Date(now);
-        sevenDaysAgo.setDate(now.getDate() - 7);
-
-        const dailySpending = new Map<string, number>();
-
-        relatedTx.forEach((tx: any) => {
-          // Fallback logic for date
-          const dateStr = tx.transaction_date || tx.created_at;
-          const d = parseLocalDate(dateStr);
-          
-          if (d >= sevenDaysAgo) {
-            const key = formatLocalDateKey(d);
-            dailySpending.set(key, (dailySpending.get(key) || 0) + tx.amount);
-          }
-        });
-
-        const trend: number[] = [];
-        let cumulative = 0;
-
-        for (let i = 6; i >= 0; i--) {
-          const d = new Date(now);
-          d.setDate(now.getDate() - i);
-          const key = formatLocalDateKey(d);
-          cumulative += dailySpending.get(key) || 0;
-          trend.push(cumulative);
-        }
-
-        const name = budget.category_id
-          ? categoryMap.get(budget.category_id) || "Unknown Category"
-          : "Overall Budget";
-
-        return {
-          id: String(budget.budget_id),
-          name,
-          category: name,
-          amount: budget.target_amount,
-          date: budget.start_date || formatLocalDateKey(now),
-          createdAt: budget.created_at || now.toISOString(),
-          spent,
-          trend,
-        };
-      });
-
-      setTransactions(transformed); // Used for Budget Cards
-      setAllTransactions(userTransactions); // Used for Recent Transactions List
+      setTransactions(userTransactions);
+      setAllTransactions(userTransactions);
       setCategories(categories);
 
     } catch (err) {

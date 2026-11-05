@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Link, router } from 'expo-router';
-import React from 'react';
+import React, { useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   ScrollView,
   StyleSheet,
@@ -9,15 +10,46 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
-import { deleteAccount } from './auth-store';
+import { useAuth } from '../context/AuthContext';
+import { useData } from '../context/DataContext';
+import { useNotifications } from '../context/NotificationContext';
+import apiClient from '../utils/api';
 
 export default function SecurityScreen() {
+  const { user, logout } = useAuth();
+  const { clearAllData } = useData();
+  const { clearAll: clearNotifications } = useNotifications();
+  const [deleting, setDeleting] = useState(false);
+
+  const confirmDelete = async () => {
+    if (!user?.id) return;
+    try {
+      setDeleting(true);
+      const res = await apiClient.delete(`/api/auth/account?user_id=${user.id}`);
+      if (res.data.success) {
+        clearNotifications();
+        clearAllData();
+        await logout();
+        Alert.alert("Account Deleted", "Your account and all associated data have been permanently removed.");
+        router.replace("/");
+      }
+    } catch (error) {
+      console.error("Account deletion error:", error);
+      Alert.alert("Error", "Failed to delete account. Please try again.");
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const handleDelete = () => {
-    Alert.alert("Delete Account", "This action cannot be undone. All your data will be lost.", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: deleteAccount }
-    ]);
+    Alert.alert(
+      "Delete Account",
+      "This action cannot be undone. All your transactions, goals, insights, and profile data will be permanently deleted.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Delete Permanently", style: "destructive", onPress: confirmDelete }
+      ]
+    );
   };
 
   return (
