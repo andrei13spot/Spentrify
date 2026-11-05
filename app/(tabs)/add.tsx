@@ -172,7 +172,8 @@ export default function AddTransaction() {
             category_id: dbCategoryId,
             transaction_date: localDate,
             source_type: 'Manual',
-            is_manual: 1
+            is_manual: 1,
+            is_reimbursable: isReimbursable ? 1 : 0
         };
 
         console.log("Saving to backend for user:", user.id);

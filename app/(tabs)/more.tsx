@@ -17,6 +17,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
 import { useNotifications } from "../../context/NotificationContext";
+import { API_BASE_URL } from "../../utils/api";
 
 /* ================= CONSTANTS ================= */
 
@@ -91,21 +92,6 @@ const SettingsItem = ({
 
 /* ================= SCREEN ================= */
 
-/**
- * Get API base URL (same logic as AuthContext)
- */
-function getApiBaseUrl(): string {
-  if (process.env.EXPO_PUBLIC_API_URL) {
-    return process.env.EXPO_PUBLIC_API_URL;
-  }
-  if (Platform.OS === 'android') {
-    return "http://10.0.2.2:3000";
-  }
-  return "http://localhost:3000";
-}
-
-const API_BASE_URL = getApiBaseUrl();
-
 export default function SettingsScreen() {
   const { user, logout } = useAuth();
   const { clearAllData: clearTransactions } = useData();
@@ -149,11 +135,34 @@ export default function SettingsScreen() {
   /* ================= UPDATE PREFERENCES ================= */
 
   const togglePreference = async (key: "cloudSync" | "biometrics") => {
-    const label = key === "cloudSync" ? "Cloud Sync" : "Biometric Lock";
-    Alert.alert(
-      "Coming Soon",
-      `${label} is not available yet. This feature will be added in a future update.`
-    );
+    if (key === "biometrics") {
+      setPreferences((prev) => ({
+        ...prev,
+        biometrics: !prev.biometrics,
+      }));
+      return;
+    }
+
+    if (!user?.id) return;
+
+    const nextState = !preferences.cloudSync;
+    try {
+      setSaving(true);
+      const res = await fetch(`${API_BASE_URL}/api/auth/preferences?user_id=${user.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_cloud_sync_enabled: nextState }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setPreferences((prev) => ({ ...prev, cloudSync: nextState }));
+      }
+    } catch (error) {
+      console.error("Error saving preference:", error);
+      Alert.alert("Error", "Could not save preference setting.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleLogout = () => {

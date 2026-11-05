@@ -284,14 +284,6 @@ async function initDb() {
         if (err) console.warn('index creation warning:', err);
       });
 
-      // Index for budget queries
-      db.run(`
-        CREATE INDEX IF NOT EXISTS idx_budgets_user_category 
-        ON Budgets(user_id, category_id)
-      `, (err) => {
-        if (err) console.warn('index creation warning:', err);
-      });
-
       // Index for AI insights (unread insights query)
       db.run(`
         CREATE INDEX IF NOT EXISTS idx_insights_user_read 

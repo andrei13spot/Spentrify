@@ -1,8 +1,12 @@
 import { useFonts } from "expo-font";
 import * as KeepAwake from "expo-keep-awake";
 import { Stack } from "expo-router";
+import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
 import { ActivityIndicator, View, PermissionsAndroid } from "react-native";
+
+// Keep the splash screen visible while fonts and initial resources load
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 import { AuthProvider } from "../context/AuthContext";
 import { DataProvider } from "../context/DataContext";
@@ -47,12 +51,14 @@ export default function RootLayout() {
     GoogleSansRegular: require("../assets/images/fonts/Google_Sans-Regular.ttf"),
   });
 
+  useEffect(() => {
+    if (fontsLoaded) {
+      SplashScreen.hideAsync().catch(() => {});
+    }
+  }, [fontsLoaded]);
+
   if (!fontsLoaded) {
-    return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
+    return null;
   }
 
   return (

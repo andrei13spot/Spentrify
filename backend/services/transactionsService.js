@@ -18,6 +18,7 @@ async function getAllTransactions(userId) {
       t.transaction_date, 
       t.source_type,
       t.is_manual,
+      t.is_reimbursable,
       t.category_id,
       c.category_name,
       c.icon_identifier
@@ -45,7 +46,8 @@ async function getAllTransactions(userId) {
     icon: row.icon_identifier,
     transaction_date: row.transaction_date,
     source_type: row.source_type,
-    is_manual: row.is_manual
+    is_manual: row.is_manual,
+    is_reimbursable: row.is_reimbursable === 1
   }));
 }
 
@@ -85,7 +87,8 @@ async function getTransactionById(id, userId) {
     category_id: row.category_id,
     transaction_date: row.transaction_date,
     source_type: row.source_type,
-    is_manual: row.is_manual
+    is_manual: row.is_manual,
+    is_reimbursable: row.is_reimbursable === 1
   };
 }
 
@@ -119,8 +122,9 @@ async function createTransaction(transactionData) {
       transaction_date,
       source_type,
       reference_number,
-      is_manual
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      is_manual,
+      is_reimbursable
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
 
   const result = await run(sql, [
@@ -132,7 +136,8 @@ async function createTransaction(transactionData) {
       transactionData.transaction_date,
       transactionData.source_type || 'Digital',
       transactionData.reference_number || null,
-      transactionData.is_manual || 0
+      transactionData.is_manual || 0,
+      transactionData.is_reimbursable || 0
     ]
   );
 
@@ -144,7 +149,8 @@ async function createTransaction(transactionData) {
     merchant_name: transactionData.merchant_name,
     description: transactionData.description || null,
     category_id: transactionData.category_id,
-    transaction_date: transactionData.transaction_date
+    transaction_date: transactionData.transaction_date,
+    is_reimbursable: transactionData.is_reimbursable === 1
   };
 }
 
@@ -182,6 +188,11 @@ async function updateTransaction(id, userId, updates) {
   if (updates.transaction_date !== undefined) {
     fields.push('transaction_date = ?');
     values.push(updates.transaction_date);
+  }
+
+  if (updates.is_reimbursable !== undefined) {
+    fields.push('is_reimbursable = ?');
+    values.push(updates.is_reimbursable ? 1 : 0);
   }
 
   if (fields.length === 0) {

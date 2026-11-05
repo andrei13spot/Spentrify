@@ -14,7 +14,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import TransactionErrorModal from "../components/TransactionErrorModal";
+import AuthErrorModal from "../components/AuthErrorModal";
 import { useAuth } from "../context/AuthContext";
 
 /* ================= SCREEN ================= */
@@ -246,8 +246,9 @@ export default function LoginScreen() {
       </KeyboardAvoidingView>
 
       {/* ERROR MODAL */}
-      <TransactionErrorModal
+      <AuthErrorModal
         visible={showError}
+        title="Login Failed"
         message={errorMessage}
         onRetry={() => setShowError(false)}
       />

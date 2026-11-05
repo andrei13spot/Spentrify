@@ -113,34 +113,21 @@ async function generateFallbackInsights(userId) {
 }
 
 /**
- * Detect overspending patterns
+ * Detect overspending patterns based on category concentration and historical trends
  */
 async function detectOverspending(userId, analytics, categoryBreakdown) {
   const insights = [];
   
-  // Check if user has budgets
-  const budgets = await query(
-    'SELECT * FROM Budgets WHERE user_id = ?',
-    [userId]
-  );
-  
-  for (const budget of budgets) {
-    const budgetAmount = parseFloat(encryptionService.decrypt(budget.target_amount_encrypted));
-    const categoryId = budget.category_id;
-    
-    let spent = 0;
-    if (categoryId) {
-      const catData = categoryBreakdown.find(c => c.category_id === categoryId);
-      spent = catData ? catData.total : 0;
-    } else {
-      spent = analytics.total;
-    }
-    
-    if (spent > budgetAmount) {
-      const overAmount = spent - budgetAmount;
+  if (!analytics || !analytics.total || analytics.total <= 0) {
+    return insights;
+  }
+
+  // Detect any category consuming more than 40% of total monthly spend
+  for (const cat of (categoryBreakdown || [])) {
+    if (cat.percentage && cat.percentage >= 40 && cat.total > 2000) {
       insights.push({
         type: 'Overspending',
-        message: `You've exceeded your ${categoryId ? 'category' : 'overall'} budget by ₱${overAmount.toLocaleString()}. Current spending: ₱${spent.toLocaleString()}.`
+        message: `${cat.category_name} accounts for ${Math.round(cat.percentage)}% of your monthly spending (₱${cat.total.toLocaleString()}). Consider reviewing this category to optimize savings.`
       });
     }
   }

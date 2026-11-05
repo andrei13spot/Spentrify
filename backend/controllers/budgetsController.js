@@ -111,12 +111,6 @@ async function createBudget(req, res, next) {
       end_date
     });
     
-    res.status(201).json({
-      success: true,
-      data: budget,
-      message: 'Budget created successfully'
-    });
-
     try {
       const notifTitle = "Goal Set"; 
       const notifMessage = `Budget: PHP ${budget_amount} (${period}) • Starts: ${start_date}`;
@@ -127,7 +121,6 @@ async function createBudget(req, res, next) {
       console.error("Notification Error:", notifError);
     }
 
-    // Send Response back to App
     res.status(201).json({
       success: true,
       data: budget,

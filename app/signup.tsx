@@ -14,7 +14,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import SignupSuccessModal from "../components/SignupSuccessModal";
-import TransactionErrorModal from "../components/TransactionErrorModal";
+import AuthErrorModal from "../components/AuthErrorModal";
 import { useAuth } from "../context/AuthContext";
 
 export default function SignUpScreen() {
@@ -278,8 +278,9 @@ export default function SignUpScreen() {
       </KeyboardAvoidingView>
 
       {/* ❌ ERROR MODAL */}
-      <TransactionErrorModal
+      <AuthErrorModal
         visible={showError}
+        title="Signup Failed"
         message={errorMessage}
         onRetry={() => setShowError(false)}
       />
