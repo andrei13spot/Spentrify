@@ -125,8 +125,6 @@ async function createTransaction(req, res, next) {
     if (userRows.length === 0) {
       return res.status(400).json({ success: false, error: 'User ID not found' });
     }
-
-    await run(`INSERT OR IGNORE INTO Users (user_id, email_encrypted, passcode_hash) VALUES (?, 'default_email', 'pass123')`, [finalUserId]);
     
 
     await run(`INSERT OR IGNORE INTO Categories (category_id, category_name, is_itr_deductible) VALUES (?, 'System Category', 0)`, [catId]);

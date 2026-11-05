@@ -237,11 +237,45 @@ async function updatePassword(req, res, next) {
   }
 }
 
+/**
+ * Permanently delete user account
+ * DELETE /api/auth/account?user_id=xxx
+ */
+async function deleteAccount(req, res, next) {
+  try {
+    const userId = Number(req.query.user_id || req.body.user_id);
+
+    if (Number.isNaN(userId)) {
+      return res.status(400).json({
+        success: false,
+        error: 'User ID is required'
+      });
+    }
+
+    const deleted = await authService.deleteAccount(userId);
+
+    if (!deleted) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Account deleted successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   login,
   signup,
   getCurrentUser,
   updatePreferences,
   updateProfile,
-  updatePassword
+  updatePassword,
+  deleteAccount
 };
